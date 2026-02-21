@@ -1,2 +1,2 @@
 # Sudoku.games
-Competitive Sudoku PvP game.
+Sudoku Gamers.
