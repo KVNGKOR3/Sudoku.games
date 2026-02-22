@@ -1418,6 +1418,11 @@
             endGame(2, 'resign');
         }
 
+        function goToTournamentsPage() {
+            const btn = document.querySelector('[data-page="tournaments"]');
+            if (btn) btn.click();
+        }
+
         function exitToLobby() {
             // Only save as ongoing if the game is actually still running
             // (not when coming from result modal after game has ended)
@@ -2512,7 +2517,7 @@
             if (!container) return;
 
             if (error || !data || data.length === 0) {
-                container.innerHTML = `<div style="color:#555;font-size:0.85rem;padding:12px 0;">No active tournaments. <span style="color:#d59020;cursor:pointer;" onclick="document.querySelector('[data-page=tournaments]').click()">Create one →</span></div>`;
+                container.innerHTML = `<div style="color:#555;font-size:0.85rem;padding:12px 0;">No active tournaments. <span style="color:#d59020;cursor:pointer;" onclick="goToTournamentsPage()">Create one →</span></div>`;
                 return;
             }
 
