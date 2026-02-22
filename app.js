@@ -3786,14 +3786,17 @@
         window.addEventListener('load', async () => {
             try {
                 swRegistration = await navigator.serviceWorker.register('./sw.js');
-                console.log('[PWA] SW registered, scope:', swRegistration.scope);
+                console.log('[PWA] SW registered ✓ scope:', swRegistration.scope);
+                console.log('[PWA] SW state:', swRegistration.active?.state || 'installing');
 
                 // Check for waiting update
                 if (swRegistration.waiting) showUpdateToast(swRegistration.waiting);
 
                 swRegistration.addEventListener('updatefound', () => {
                     const newSW = swRegistration.installing;
+                    console.log('[PWA] SW update found, state:', newSW.state);
                     newSW.addEventListener('statechange', () => {
+                        console.log('[PWA] SW state changed:', newSW.state);
                         if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
                             showUpdateToast(newSW);
                         }
@@ -3807,9 +3810,11 @@
                 });
 
             } catch (e) {
-                console.warn('[PWA] SW registration failed:', e);
+                console.error('[PWA] SW registration FAILED:', e.message, e);
             }
         });
+    } else {
+        console.warn('[PWA] Service workers not supported in this browser');
     }
 
     function showUpdateToast(swWaiting) {

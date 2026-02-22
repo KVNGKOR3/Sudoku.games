@@ -3,20 +3,19 @@
  * Offline-first, background sync, push notifications
  */
 
-const APP_VERSION   = 'v1.6.0';
-const CACHE_STATIC  = `sudoku-static-v1.6.0`;
-const CACHE_RUNTIME = `sudoku-runtime-v1.6.0`;
+const APP_VERSION   = 'v1.7.0';
+const CACHE_STATIC  = `sudoku-static-v1.7.0`;
+const CACHE_RUNTIME = `sudoku-runtime-v1.7.0`;
 
 // Files to pre-cache on install (app shell)
-// Paths are relative so they work under /Sudoku.games/ on GitHub Pages
 const PRECACHE_URLS = [
-  './',
-  './index.html',
-  './style.css',
-  './app.js',
-  './manifest.json',
-  './icon-192.png',
-  './icon-512.png',
+  '/Sudoku.games/',
+  '/Sudoku.games/index.html',
+  '/Sudoku.games/style.css',
+  '/Sudoku.games/app.js',
+  '/Sudoku.games/manifest.json',
+  '/Sudoku.games/icon-192.png',
+  '/Sudoku.games/icon-512.png',
 ];
 
 // External CDN scripts — cache on first use
@@ -32,9 +31,17 @@ const CDN_PATTERNS = [
 self.addEventListener('install', event => {
   console.log('[SW] Installing', APP_VERSION);
   event.waitUntil(
-    caches.open(CACHE_STATIC)
-      .then(cache => cache.addAll(PRECACHE_URLS))
-      .then(() => self.skipWaiting())   // Activate immediately
+    caches.open(CACHE_STATIC).then(cache => {
+      // Use individual adds so one failure doesn't kill the whole install
+      return Promise.allSettled(
+        PRECACHE_URLS.map(url =>
+          cache.add(url).catch(e => console.warn('[SW] Precache skip:', url, e.message))
+        )
+      );
+    }).then(() => {
+      console.log('[SW] Install complete');
+      return self.skipWaiting();
+    })
   );
 });
 
