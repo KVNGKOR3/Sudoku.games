@@ -734,7 +734,18 @@
                         else renderHistory();
                     } else if (page === 'friends') {
                         if (friendsPage) friendsPage.classList.add('active');
-                        if (supabaseClient && currentUser) loadFriends();
+                        if (supabaseClient && currentUser) {
+                            loadFriends();
+                        } else if (supabaseClient) {
+                            // Auth might still be initialising — show prompt and retry
+                            const fl = document.getElementById('friends-list');
+                            if (fl) fl.innerHTML = '<div class="empty-state" style="color:#555;">Sign in to see your friends</div>';
+                            // Retry once auth resolves
+                            const retry = setInterval(() => {
+                                if (currentUser) { clearInterval(retry); loadFriends(); }
+                            }, 500);
+                            setTimeout(() => clearInterval(retry), 5000);
+                        }
                     } else if (page === 'tournaments') {
                         if (tournamentsPage) tournamentsPage.classList.add('active');
                         loadTournamentsPage();
@@ -4271,7 +4282,12 @@
         // FRIENDS SYSTEM
         // ============================================
         async function loadFriends() {
-            if (!supabaseClient || !currentUser) return;
+            const list = document.getElementById('friends-list');
+            if (!supabaseClient || !currentUser) {
+                if (list) list.innerHTML = '<div class="empty-state" style="color:#555;">Sign in to see your friends</div>';
+                return;
+            }
+            if (list) list.innerHTML = '<div class="empty-state" style="color:#555;">Loading…</div>';
             const { data } = await supabaseClient
                 .from('friendships')
                 .select(`
