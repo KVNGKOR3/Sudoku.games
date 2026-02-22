@@ -2508,27 +2508,30 @@
                 .order('starts_at', { ascending: true })
                 .limit(5);
 
-            if (error || !data || data.length === 0) return; // keep static fallback if no data
-
-            const icons = { fire: '🔥', bolt: '⚡', trophy: '🏆', star: '⭐', crown: '👑' };
-            const container = document.querySelector('.list-section');
+            const container = document.getElementById('lobby-tournaments-list');
             if (!container) return;
 
-            // Only replace if we actually got tournaments
+            if (error || !data || data.length === 0) {
+                container.innerHTML = '<div style="color:#555;font-size:0.85rem;padding:12px 0;">No active tournaments. <span style="color:#d59020;cursor:pointer;" onclick="document.querySelector('[data-page=tournaments]').click()">Create one →</span></div>';
+                return;
+            }
+
+            const icons = { fire: '🔥', bolt: '⚡', trophy: '🏆', star: '⭐', crown: '👑' };
+
             container.innerHTML = data.map(t => {
                 const endsAt = new Date(t.ends_at);
                 const diffMs = endsAt - Date.now();
-                const diffH = Math.floor(diffMs / 3600000);
-                const diffM = Math.floor((diffMs % 3600000) / 60000);
+                const diffH  = Math.floor(diffMs / 3600000);
+                const diffM  = Math.floor((diffMs % 3600000) / 60000);
                 const timeLeft = diffH > 0 ? diffH + 'H' : diffM + 'M';
                 const icon = icons[t.icon] || '🏆';
                 const players = t.player_count >= 1000
                     ? (t.player_count / 1000).toFixed(1) + 'k'
-                    : t.player_count + '+';
+                    : t.player_count;
 
                 return `
-                    <div class="list-item" style="cursor:pointer;" onclick="joinTournament('${t.id}')">
-                        <div class="list-icon ${t.icon || 'trophy'}">${icon}</div>
+                    <div class="list-item" style="cursor:pointer;" onclick="openTournamentDetail('${t.id}')">
+                        <div class="list-icon ${t.icon || 'trophy'}" style="font-size:1.4rem;">${icon}</div>
                         <div class="list-content">
                             <div class="list-title">${t.name}</div>
                             <div class="list-meta">${t.time_control} Rated • ${timeLeft}</div>
@@ -2539,18 +2542,13 @@
                     </div>`;
             }).join('');
 
-            // Subscribe to player_count changes in real time
+            // Realtime updates
             supabaseClient
-                .channel('tournaments-live')
-                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tournaments' }, () => {
+                .channel('lobby-tournaments-live')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'tournaments' }, () => {
                     loadTournaments();
                 })
                 .subscribe();
-        }
-
-        function joinTournament(id) {
-            // For now just show a toast — wire up to actual tournament logic when ready
-            showToast('Tournaments coming soon!', 2000);
         }
 
         
@@ -2606,8 +2604,10 @@
 
         async function loadTournamentsPage() {
             if (!supabaseClient) {
+                // Retry after 2s in case Supabase is still connecting
                 document.getElementById('tournaments-list').innerHTML =
-                    '<div class="empty-state" style="color:#555;">Connect to play online first.</div>';
+                    '<div class="empty-state" style="color:#555;">Connecting…</div>';
+                setTimeout(loadTournamentsPage, 2000);
                 return;
             }
 
@@ -3695,11 +3695,17 @@
             const accepted = data.filter(f => f.status === 'accepted');
             const pending  = data.filter(f => f.status === 'pending' && f.addressee_id === currentUser.id);
 
-            // Badge count
+            // Badge count — side menu friends badge
             const badge = document.getElementById('friends-badge');
             if (badge) {
                 badge.textContent = pending.length;
                 badge.style.display = pending.length > 0 ? 'inline' : 'none';
+            }
+            // Top-right header notification badge — real pending friend requests
+            const notifBadge = document.getElementById('notif-badge');
+            if (notifBadge) {
+                notifBadge.textContent = pending.length;
+                notifBadge.style.display = pending.length > 0 ? 'inline' : 'none';
             }
 
             renderFriendsList(accepted);

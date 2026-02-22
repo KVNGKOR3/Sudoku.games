@@ -168,7 +168,7 @@
                 </button>
                 <button class="user-btn">
                     <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-                    <span class="notification-badge" id="notif-badge">2</span>
+                    <span class="notification-badge" id="notif-badge" style="display:none;">0</span>
                 </button>
             </div>
         </header>
@@ -299,39 +299,10 @@ create policy "public rw" on sudoku_rooms
                 </div>
             </div>
 
-            <!-- Tournaments -->
+            <!-- Tournaments (populated dynamically from Supabase) -->
             <div class="section-label">Live Tournaments</div>
-            <div class="list-section">
-                <div class="list-item">
-                    <div class="list-icon fire">🔥</div>
-                    <div class="list-content">
-                        <div class="list-title">Blitz Tourney</div>
-                        <div class="list-meta">5+0 Rated • 2H</div>
-                    </div>
-                    <div class="list-right">
-                        <div class="list-players">👤 500+</div>
-                    </div>
-                </div>
-                <div class="list-item">
-                    <div class="list-icon bolt">⚡</div>
-                    <div class="list-content">
-                        <div class="list-title">Bullet Arena</div>
-                        <div class="list-meta">1+0 Rated • 27M</div>
-                    </div>
-                    <div class="list-right">
-                        <div class="list-players">👤 1,247</div>
-                    </div>
-                </div>
-                <div class="list-item">
-                    <div class="list-icon trophy">🏆</div>
-                    <div class="list-content">
-                        <div class="list-title">Daily Sudoku Cup</div>
-                        <div class="list-meta">10+0 Rated • Daily</div>
-                    </div>
-                    <div class="list-right">
-                        <div class="list-players">👤 3,892</div>
-                    </div>
-                </div>
+            <div id="lobby-tournaments-list" class="list-section">
+                <div style="color:#555;font-size:0.85rem;padding:12px 0;">Loading…</div>
             </div>
         </div>
     </div>
