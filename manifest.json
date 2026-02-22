@@ -7,6 +7,7 @@
   "scope": "/Sudoku.games/",
   "display": "standalone",
   "display_override": [
+    "tabbed",
     "window-controls-overlay",
     "standalone",
     "browser"
@@ -161,6 +162,58 @@
     {
       "platform": "webapp",
       "url": "https://sudoku-gamers.github.io/Sudoku.games/manifest.json"
+    }
+  ],
+  "launch_handler": {
+    "client_mode": [
+      "focus-existing",
+      "auto"
+    ]
+  },
+  "protocol_handlers": [
+    {
+      "protocol": "web+sudoku",
+      "url": "/Sudoku.games/?room=%s"
+    }
+  ],
+  "share_target": {
+    "action": "/Sudoku.games/",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "note_taking": {
+    "new_note_url": "/Sudoku.games/"
+  },
+  "widgets": [
+    {
+      "name": "Sudoku.game",
+      "description": "Quick access to Sudoku.game",
+      "tag": "sudoku-widget",
+      "ms_ac_template": "widget/ac.json",
+      "data": "widget/data.json",
+      "type": "application/json",
+      "screenshots": [
+        {
+          "src": "screenshot-narrow.png",
+          "sizes": "1080x1920",
+          "label": "Sudoku.game widget"
+        }
+      ],
+      "icons": [
+        {
+          "src": "icon-96.png",
+          "sizes": "96x96"
+        }
+      ],
+      "auth": false,
+      "update": 86400
     }
   ]
 }
