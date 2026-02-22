@@ -2430,6 +2430,8 @@
                 document.getElementById('supabase-config-box').style.display = 'none';
                 document.getElementById('online-buttons').style.display = 'flex';
                 onlineState.enabled = true;
+                startRealtimeStats();
+                loadTournaments();
             } catch(e) {
                 statusEl.className = 'config-status err';
                 statusEl.textContent = '● ' + (e.message || 'Connection failed — check URL & key');
@@ -2437,7 +2439,116 @@
             }
         }
 
-        async function tryRestoreSupabase() {
+        // ============================================================
+        // REAL-TIME STATS — online players (Presence) + active games
+        // ============================================================
+        let _presenceChannel = null;
+
+        function startRealtimeStats() {
+            if (!supabaseClient) return;
+
+            // 1. Presence channel — each tab joins, we count members
+            if (_presenceChannel) supabaseClient.removeChannel(_presenceChannel);
+            _presenceChannel = supabaseClient.channel('lobby-presence', {
+                config: { presence: { key: 'player' } }
+            });
+
+            _presenceChannel
+                .on('presence', { event: 'sync' }, () => {
+                    const state = _presenceChannel.presenceState();
+                    const count = Object.keys(state).length;
+                    document.getElementById('online-players').textContent = count.toLocaleString();
+                })
+                .subscribe(async (status) => {
+                    if (status === 'SUBSCRIBED') {
+                        await _presenceChannel.track({
+                            user_id: currentUser?.id || 'guest-' + Math.random().toString(36).slice(2),
+                            online_at: new Date().toISOString()
+                        });
+                    }
+                });
+
+            // 2. Active games — count sudoku_rooms updated in last 30 min, refresh every 15s
+            async function refreshGameCount() {
+                const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+                const { count } = await supabaseClient
+                    .from('sudoku_rooms')
+                    .select('id', { count: 'exact', head: true })
+                    .gte('updated_at', since);
+                if (count !== null) {
+                    document.getElementById('active-games').textContent = count.toLocaleString();
+                }
+            }
+            refreshGameCount();
+            setInterval(refreshGameCount, 15000);
+
+            // 3. Subscribe to room changes so game count updates in near-real-time
+            supabaseClient
+                .channel('rooms-count')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'sudoku_rooms' }, refreshGameCount)
+                .subscribe();
+        }
+
+        // ============================================================
+        // TOURNAMENTS — fetch from Supabase and render live
+        // ============================================================
+        async function loadTournaments() {
+            if (!supabaseClient) return;
+
+            const now = new Date().toISOString();
+            const { data, error } = await supabaseClient
+                .from('tournaments')
+                .select('*')
+                .gte('ends_at', now)
+                .order('starts_at', { ascending: true })
+                .limit(5);
+
+            if (error || !data || data.length === 0) return; // keep static fallback if no data
+
+            const icons = { fire: '🔥', bolt: '⚡', trophy: '🏆', star: '⭐', crown: '👑' };
+            const container = document.querySelector('.list-section');
+            if (!container) return;
+
+            // Only replace if we actually got tournaments
+            container.innerHTML = data.map(t => {
+                const endsAt = new Date(t.ends_at);
+                const diffMs = endsAt - Date.now();
+                const diffH = Math.floor(diffMs / 3600000);
+                const diffM = Math.floor((diffMs % 3600000) / 60000);
+                const timeLeft = diffH > 0 ? diffH + 'H' : diffM + 'M';
+                const icon = icons[t.icon] || '🏆';
+                const players = t.player_count >= 1000
+                    ? (t.player_count / 1000).toFixed(1) + 'k'
+                    : t.player_count + '+';
+
+                return `
+                    <div class="list-item" style="cursor:pointer;" onclick="joinTournament('${t.id}')">
+                        <div class="list-icon ${t.icon || 'trophy'}">${icon}</div>
+                        <div class="list-content">
+                            <div class="list-title">${t.name}</div>
+                            <div class="list-meta">${t.time_control} Rated • ${timeLeft}</div>
+                        </div>
+                        <div class="list-right">
+                            <div class="list-players">👤 ${players}</div>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            // Subscribe to player_count changes in real time
+            supabaseClient
+                .channel('tournaments-live')
+                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tournaments' }, () => {
+                    loadTournaments();
+                })
+                .subscribe();
+        }
+
+        function joinTournament(id) {
+            // For now just show a toast — wire up to actual tournament logic when ready
+            showToast('Tournaments coming soon!', 2000);
+        }
+
+                async function tryRestoreSupabase() {
             // Always connect with hardcoded credentials — no user input needed
             document.getElementById('sb-url').value = SUPABASE_URL;
             document.getElementById('sb-key').value = SUPABASE_KEY;
@@ -3750,10 +3861,9 @@
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
 
-            document.getElementById('online-players').textContent =
-                (10000 + Math.floor(Math.random() * 5000)).toLocaleString();
-            document.getElementById('active-games').textContent =
-                (2000 + Math.floor(Math.random() * 2000)).toLocaleString();
+            // Real-time stats started after Supabase connects
+            document.getElementById('online-players').textContent = '…';
+            document.getElementById('active-games').textContent = '…';
 
             // Ongoing game icon
             checkAndShowOngoingBanner();
@@ -3777,36 +3887,44 @@
         init();
 
     // ============================================================
-    // SERVICE WORKER — registered in index.html <head>
-    // Here we just hook into the already-registered SW for update toasts
+    // SERVICE WORKER REGISTRATION
     // ============================================================
     let swRegistration = null;
     let deferredInstallPrompt = null;
 
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.ready.then(reg => {
-            swRegistration = reg;
-            console.log('[PWA] SW ready ✓ scope:', reg.scope);
+        window.addEventListener('load', async () => {
+            try {
+                swRegistration = await navigator.serviceWorker.register('./sw2.js');
+                console.log('[PWA] SW registered ✓ scope:', swRegistration.scope);
+                console.log('[PWA] SW state:', swRegistration.active?.state || 'installing');
 
-            // Check for waiting update
-            if (reg.waiting) showUpdateToast(reg.waiting);
+                // Check for waiting update
+                if (swRegistration.waiting) showUpdateToast(swRegistration.waiting);
 
-            reg.addEventListener('updatefound', () => {
-                const newSW = reg.installing;
-                console.log('[PWA] SW update found');
-                newSW.addEventListener('statechange', () => {
-                    if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                        showUpdateToast(newSW);
-                    }
+                swRegistration.addEventListener('updatefound', () => {
+                    const newSW = swRegistration.installing;
+                    console.log('[PWA] SW update found, state:', newSW.state);
+                    newSW.addEventListener('statechange', () => {
+                        console.log('[PWA] SW state changed:', newSW.state);
+                        if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                            showUpdateToast(newSW);
+                        }
+                    });
                 });
-            });
-        });
 
-        // Page reload after SW takes control
-        let refreshing = false;
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-            if (!refreshing) { refreshing = true; location.reload(); }
+                // Page reload after SW takes control
+                let refreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    if (!refreshing) { refreshing = true; location.reload(); }
+                });
+
+            } catch (e) {
+                console.error('[PWA] SW registration FAILED:', e.message, e);
+            }
         });
+    } else {
+        console.warn('[PWA] Service workers not supported in this browser');
     }
 
     function showUpdateToast(swWaiting) {
@@ -3896,13 +4014,3 @@
     }
     window.addEventListener('online',  updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
-
-// Add to app.js end:
-setTimeout(() => {
-  if (!gameState.isRunning) {
-    gameState.timeLimit = 300; // Quick 5+0
-    gameState.vsAI = true;
-    gameState.aiDifficulty = 'easy';
-    startGame();
-  }
-}, 2000);
