@@ -992,7 +992,7 @@
                     tab.classList.add('active');
                     
                     if (tab.dataset.tab === 'puzzles') {
-                        document.getElementById('difficulty-modal').classList.add('active');
+                        openTechniqueDojo();
                     }
                 });
             });
@@ -2177,6 +2177,10 @@
                 title.textContent = gameState.scores.p1 > 0 ? 'Puzzle Complete!' : 'Keep Trying!';
                 subtitle.textContent = `You solved ${gameState.scores.p1} cells`;
                 ratingChangeEl.parentElement.style.display = 'none';
+                // Award dojo XP if this was a technique puzzle
+                if (gameState.dojoTechniqueId && gameState.scores.p1 > 0) {
+                    completeDojoPuzzle();
+                }
             } else if (winner === 1) {
                 icon.textContent = '🏆';
                 title.textContent = 'You Win!';
@@ -2990,6 +2994,320 @@
             showToast('Tournament created! Share the link to get players.', 3000);
         }
 
+        // ============================================================
+        // TECHNIQUE DOJO — Puzzle learning system
+        // ============================================================
+        const TECHNIQUES = [
+            {
+                id: 'naked_single',
+                name: 'Naked Single',
+                icon: '1️⃣',
+                rank: 'Beginner',
+                color: '#4a9',
+                description: 'A cell with only ONE possible number. No guessing needed — just logic.',
+                hint: 'Look for any cell where only one number fits after eliminating all others in the row, column, and box.',
+                difficulty: 'easy',
+                xp: 10,
+            },
+            {
+                id: 'hidden_single',
+                name: 'Hidden Single',
+                icon: '🔍',
+                rank: 'Beginner',
+                color: '#4a9',
+                description: 'A number that can only go in ONE cell within a row, column, or box — even if that cell has other candidates.',
+                hint: 'Scan each row, column, and box. If a number only fits in one place, it belongs there.',
+                difficulty: 'easy',
+                xp: 15,
+            },
+            {
+                id: 'naked_pair',
+                name: 'Naked Pair',
+                icon: '👥',
+                rank: 'Intermediate',
+                color: '#d59020',
+                description: 'Two cells in the same unit both containing only the same two candidates. Those numbers are "locked" there — eliminate them elsewhere.',
+                hint: 'Find two cells sharing exactly 2 candidates. Those numbers can\'t appear anywhere else in that row/column/box.',
+                difficulty: 'medium',
+                xp: 25,
+            },
+            {
+                id: 'pointing_pair',
+                name: 'Pointing Pair',
+                icon: '👉',
+                rank: 'Intermediate',
+                color: '#d59020',
+                description: 'When a candidate in a box is restricted to one row or column, it can be eliminated from the rest of that row/column.',
+                hint: 'If a number in a 3×3 box only appears in one row, remove it from all other cells in that row outside the box.',
+                difficulty: 'medium',
+                xp: 30,
+            },
+            {
+                id: 'hidden_pair',
+                name: 'Hidden Pair',
+                icon: '🎭',
+                rank: 'Advanced',
+                color: '#a55',
+                description: 'Two numbers that can only go in two specific cells within a unit. All other candidates in those cells can be eliminated.',
+                hint: 'Find two numbers that only appear in the same two cells in a unit — clear all other candidates from those cells.',
+                difficulty: 'hard',
+                xp: 40,
+            },
+            {
+                id: 'x_wing',
+                name: 'X-Wing',
+                icon: '✈️',
+                rank: 'Expert',
+                color: '#a59',
+                description: 'A candidate appearing in exactly two cells in each of two rows, and those cells share the same two columns — forms an "X" shape.',
+                hint: 'If a number appears only twice in two different rows AND the same two columns, eliminate it from all other cells in those columns.',
+                difficulty: 'hard',
+                xp: 60,
+            },
+            {
+                id: 'y_wing',
+                name: 'Y-Wing',
+                icon: '🪃',
+                rank: 'Expert',
+                color: '#a59',
+                description: 'Three cells forming a "wing" pattern where eliminations chain across the board.',
+                hint: 'Find a pivot cell with 2 candidates that sees two "wing" cells, each sharing one candidate with the pivot. The shared candidate of the wings can be eliminated from cells that see both wings.',
+                difficulty: 'hard',
+                xp: 80,
+            },
+            {
+                id: 'daily_challenge',
+                name: 'Daily Challenge',
+                icon: '📅',
+                rank: 'Special',
+                color: '#d59020',
+                description: 'A fresh hand-crafted puzzle every day. Combines multiple techniques. Share your solve time!',
+                hint: 'Use everything you\'ve learned. This puzzle requires at least 3 different techniques.',
+                difficulty: 'hard',
+                xp: 100,
+                isDaily: true,
+            },
+        ];
+
+        function getTechniqueProgress() {
+            return JSON.parse(localStorage.getItem('sudoku_technique_progress') || '{}');
+        }
+
+        function saveTechniqueProgress(progress) {
+            localStorage.setItem('sudoku_technique_progress', JSON.stringify(progress));
+        }
+
+        function getTotalDojoXP() {
+            const p = getTechniqueProgress();
+            return Object.values(p).reduce((sum, t) => sum + (t.xp || 0), 0);
+        }
+
+        function getDojoRank(xp) {
+            if (xp >= 300) return { rank: 'Grandmaster', color: '#d59020', icon: '🏆' };
+            if (xp >= 150) return { rank: 'Expert',      color: '#a59',    icon: '⭐' };
+            if (xp >= 70)  return { rank: 'Advanced',    color: '#a55',    icon: '🔥' };
+            if (xp >= 25)  return { rank: 'Intermediate',color: '#d59020', icon: '📈' };
+            return                 { rank: 'Beginner',   color: '#4a9',    icon: '🌱' };
+        }
+
+        function openTechniqueDojo() {
+            const progress = getTechniqueProgress();
+            const xp = getTotalDojoXP();
+            const { rank, color, icon } = getDojoRank(xp);
+            const todayKey = new Date().toISOString().split('T')[0];
+
+            const html = `
+                <div class="modal-overlay active" id="dojo-modal" onclick="if(event.target===this)closeDojo()">
+                    <div class="modal" style="max-width:420px;max-height:88vh;overflow-y:auto;padding:0;">
+                        <div style="background:linear-gradient(135deg,#1a1612,#262218);padding:20px;border-radius:14px 14px 0 0;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <div>
+                                    <div style="font-size:1.2rem;font-weight:800;color:#d59020;">🥋 Technique Dojo</div>
+                                    <div style="font-size:0.78rem;color:#777;margin-top:2px;">Master solving techniques step by step</div>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div style="font-size:0.7rem;font-weight:700;color:${color};">${icon} ${rank}</div>
+                                    <div style="font-size:1.1rem;font-weight:800;color:#d59020;">${xp} XP</div>
+                                </div>
+                            </div>
+                            <!-- XP bar -->
+                            <div style="margin-top:12px;background:#2a2520;border-radius:4px;height:6px;overflow:hidden;">
+                                <div style="width:${Math.min(100, (xp % 150) / 1.5)}%;height:100%;background:#d59020;border-radius:4px;transition:width 0.5s;"></div>
+                            </div>
+                        </div>
+                        <div style="padding:16px;display:flex;flex-direction:column;gap:10px;">
+                            ${TECHNIQUES.map(t => {
+                                const done  = progress[t.id];
+                                const count = done?.count || 0;
+                                const earnedXP = done?.xp || 0;
+                                const isLocked = !done && TECHNIQUES.indexOf(t) > 0 &&
+                                    !progress[TECHNIQUES[TECHNIQUES.indexOf(t) - 1]?.id];
+                                const isDaily = t.isDaily;
+                                const dailyDone = isDaily && progress[t.id]?.lastDate === todayKey;
+                                return `
+                                <div onclick="${isLocked ? '' : `startDojoTechnique('${t.id}')`}"
+                                    style="background:#1a1816;border-radius:10px;padding:14px;cursor:${isLocked ? 'default' : 'pointer'};
+                                           opacity:${isLocked ? 0.4 : 1};border-left:3px solid ${done ? t.color : '#333'};
+                                           transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform=''">
+                                    <div style="display:flex;align-items:center;gap:10px;">
+                                        <div style="font-size:1.6rem;">${isLocked ? '🔒' : (dailyDone ? '✅' : t.icon)}</div>
+                                        <div style="flex:1;">
+                                            <div style="font-size:0.9rem;font-weight:700;color:${done ? '#fff' : '#bababa'};">
+                                                ${t.name}
+                                                ${isDaily ? `<span style="font-size:0.65rem;background:#d59020;color:#161512;padding:1px 5px;border-radius:3px;margin-left:4px;">DAILY</span>` : ''}
+                                            </div>
+                                            <div style="font-size:0.72rem;color:#666;margin-top:2px;">${t.rank} · ${t.xp} XP${count > 0 ? ` · Solved ${count}×` : ''}</div>
+                                        </div>
+                                        <div style="font-size:0.75rem;color:${t.color};font-weight:700;">${earnedXP > 0 ? '+'+earnedXP+'xp' : ''}</div>
+                                    </div>
+                                    <div style="font-size:0.78rem;color:#666;margin-top:8px;line-height:1.5;">${t.description}</div>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                        <div style="padding:0 16px 16px;">
+                            <button onclick="closeDojo()" class="action-btn btn-secondary">Close</button>
+                        </div>
+                    </div>
+                </div>`;
+
+            document.body.insertAdjacentHTML('beforeend', html);
+        }
+
+        window.closeDojo = function() {
+            document.getElementById('dojo-modal')?.remove();
+        };
+
+        window.startDojoTechnique = function(techniqueId) {
+            const technique = TECHNIQUES.find(t => t.id === techniqueId);
+            if (!technique) return;
+            closeDojo();
+
+            // Show technique intro before puzzle
+            const todayKey = new Date().toISOString().split('T')[0];
+            const progress = getTechniqueProgress();
+            const isDaily = technique.isDaily;
+            const dailyDone = isDaily && progress[techniqueId]?.lastDate === todayKey;
+
+            const introHtml = `
+                <div class="modal-overlay active" id="dojo-intro-modal">
+                    <div class="modal" style="max-width:360px;">
+                        <div class="modal-header" style="background:linear-gradient(135deg,#1a1612,#262218);">
+                            <div style="font-size:2rem;margin-bottom:8px;">${technique.icon}</div>
+                            <div class="modal-title">${technique.name}</div>
+                            <div class="modal-subtitle" style="color:${technique.color};">${technique.rank}</div>
+                        </div>
+                        <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:14px;">
+                            <div style="background:#1a1816;border-radius:8px;padding:14px;font-size:0.85rem;color:#bababa;line-height:1.6;">
+                                ${technique.description}
+                            </div>
+                            <div style="background:rgba(213,144,32,0.08);border:1px solid rgba(213,144,32,0.2);border-radius:8px;padding:12px;">
+                                <div style="font-size:0.7rem;color:#d59020;font-weight:700;margin-bottom:6px;">💡 HOW TO SOLVE</div>
+                                <div style="font-size:0.82rem;color:#bababa;line-height:1.5;">${technique.hint}</div>
+                            </div>
+                            ${dailyDone ? '<div style="text-align:center;color:#4a9;font-size:0.85rem;">✅ Already completed today! Come back tomorrow.</div>' : ''}
+                            <div style="display:flex;gap:10px;">
+                                <button onclick="document.getElementById(\'dojo-intro-modal\').remove();openTechniqueDojo();" class="action-btn btn-secondary" style="flex:1;">← Back</button>
+                                ${!dailyDone ? `<button onclick="launchDojoGame('${techniqueId}')" class="action-btn btn-primary" style="flex:2;">Start Puzzle (+${technique.xp} XP)</button>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            document.body.insertAdjacentHTML('beforeend', introHtml);
+        };
+
+        window.launchDojoGame = function(techniqueId) {
+            document.getElementById('dojo-intro-modal')?.remove();
+            const technique = TECHNIQUES.find(t => t.id === techniqueId);
+            if (!technique) return;
+
+            // Store which technique we're solving
+            gameState.dojoTechniqueId = techniqueId;
+            gameState.dojoStartTime = Date.now();
+
+            // Set up game as solo puzzle mode
+            gameState.gameMode = 'solo';
+            gameState.difficulty = technique.difficulty;
+            gameState.vsAI = false;
+            gameState.timeLimit = 0; // untimed — puzzle mode
+
+            // Start the game
+            startGame();
+
+            // Show technique reminder banner in game
+            setTimeout(() => {
+                const existing = document.getElementById('dojo-banner');
+                if (!existing) {
+                    const banner = document.createElement('div');
+                    banner.id = 'dojo-banner';
+                    banner.style.cssText = `position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+                        background:#1a1816;border:1px solid ${technique.color};border-radius:8px;
+                        padding:8px 14px;font-size:0.75rem;color:#bababa;z-index:500;max-width:300px;text-align:center;`;
+                    banner.innerHTML = `${technique.icon} <strong style="color:${technique.color};">${technique.name}</strong> — ${technique.hint.slice(0,60)}… <span onclick="this.parentNode.remove()" style="cursor:pointer;color:#555;margin-left:8px;">✕</span>`;
+                    document.body.appendChild(banner);
+                }
+            }, 500);
+
+            showToast(`🥋 ${technique.name} puzzle started!`, 2000);
+        };
+
+        // Call this from endGame when in dojo mode
+        function completeDojoPuzzle() {
+            const tid = gameState.dojoTechniqueId;
+            if (!tid) return;
+            const technique = TECHNIQUES.find(t => t.id === tid);
+            if (!technique) return;
+
+            document.getElementById('dojo-banner')?.remove();
+            gameState.dojoTechniqueId = null;
+
+            const solveMs = Date.now() - (gameState.dojoStartTime || Date.now());
+            const solveSecs = Math.round(solveMs / 1000);
+            const todayKey = new Date().toISOString().split('T')[0];
+
+            const progress = getTechniqueProgress();
+            const prev = progress[tid] || { count: 0, xp: 0 };
+            const isFirstSolve = prev.count === 0;
+            const isDaily = technique.isDaily;
+            const dailyAlreadyDone = isDaily && prev.lastDate === todayKey;
+
+            if (!dailyAlreadyDone) {
+                progress[tid] = {
+                    count: prev.count + 1,
+                    xp: prev.xp + (isFirstSolve ? technique.xp : Math.floor(technique.xp * 0.2)),
+                    lastDate: todayKey,
+                    bestTime: prev.bestTime ? Math.min(prev.bestTime, solveSecs) : solveSecs,
+                };
+                saveTechniqueProgress(progress);
+
+                const earnedXP = isFirstSolve ? technique.xp : Math.floor(technique.xp * 0.2);
+                const totalXP = getTotalDojoXP();
+                const { rank } = getDojoRank(totalXP);
+
+                setTimeout(() => {
+                    const celebHtml = `
+                        <div class="modal-overlay active" id="dojo-complete-modal">
+                            <div class="modal" style="max-width:340px;text-align:center;">
+                                <div class="modal-body" style="padding:28px 20px;display:flex;flex-direction:column;gap:14px;align-items:center;">
+                                    <div style="font-size:3rem;">${isFirstSolve ? '🎉' : '✅'}</div>
+                                    <div style="font-size:1.2rem;font-weight:800;color:#d59020;">${isFirstSolve ? 'Technique Mastered!' : 'Solved Again!'}</div>
+                                    <div style="font-size:0.85rem;color:#bababa;">${technique.name} · ${solveSecs}s</div>
+                                    <div style="background:#1a1816;border-radius:8px;padding:12px 20px;width:100%;">
+                                        <div style="font-size:1.4rem;font-weight:800;color:#d59020;">+${earnedXP} XP</div>
+                                        <div style="font-size:0.75rem;color:#777;">${totalXP} total · ${rank}</div>
+                                    </div>
+                                    ${isFirstSolve ? `<div style="font-size:0.8rem;color:#4a9;">🔓 Next technique unlocked!</div>` : ''}
+                                    <div style="display:flex;gap:10px;width:100%;">
+                                        <button onclick="document.getElementById('dojo-complete-modal').remove();openTechniqueDojo();" class="action-btn btn-primary" style="flex:1;">Back to Dojo</button>
+                                        <button onclick="document.getElementById('dojo-complete-modal').remove();window.launchDojoGame('${tid}');" class="action-btn btn-secondary" style="flex:1;">Again</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+                    document.body.insertAdjacentHTML('beforeend', celebHtml);
+                }, 500);
+            }
+        }
+
         async function tryRestoreSupabase() {
             // Always connect with hardcoded credentials — no user input needed
             document.getElementById('sb-url').value = SUPABASE_URL;
@@ -3579,13 +3897,12 @@
             else if (winner === 2) vibrate([300]);
             _origEndGame(winner, reason);
             document.getElementById('online-badge').classList.remove('active');
-            // Only save to cloud for real online games (not AI, not local pass & play)
-            const isRealOnlineGame = currentUser && supabaseClient
-                && onlineState.roomId
-                && !gameState.vsAI;
-            if (isRealOnlineGame) {
+            // Save to cloud for any game when signed in (online, AI, solo, puzzle)
+            if (currentUser && supabaseClient) {
                 const result = winner === 1 ? 'win' : winner === 2 ? 'loss' : 'draw';
-                const oppName = document.getElementById('opponent-name')?.textContent || 'Opponent';
+                const oppName = gameState.vsAI
+                    ? ('AI ' + (gameState.aiDifficulty || 'medium'))
+                    : (document.getElementById('opponent-name')?.textContent || 'Local');
                 saveGameToCloud(result, gameState.scores.p1, gameState.scores.p2, oppName);
             }
         };
@@ -3641,7 +3958,6 @@
                 .from('profiles').select('*').eq('id', userId).single();
             if (data) {
                 currentProfile = data;
-                // Sync local player data with cloud profile
                 playerData.settings.username = data.username;
                 playerData.rating = data.rating;
                 playerData.stats = {
@@ -3652,12 +3968,13 @@
                     bestStreak: data.best_streak,
                 };
                 savePlayerData();
+                updateAuthUI(true); // re-apply now that profile is loaded
                 updateUIWithProfile();
             }
         }
 
         function onAuthSuccess() {
-            updateAuthUI(true);
+            updateAuthUI(true); // immediate update with currentUser data
             loadLeaderboard();
             loadFriends();
             loadGameHistory();
@@ -3671,19 +3988,24 @@
             const authBtn = document.getElementById('side-auth-btn');
             const signoutBtn = document.getElementById('side-signout-btn');
             if (!authBtn) return;
-            if (isSignedIn && currentProfile) {
-                authBtn.textContent = currentProfile.username;
+            if (isSignedIn && currentUser) {
+                // Use profile username if loaded, else fall back to email prefix or metadata
+                const displayName = currentProfile?.username
+                    || currentUser.user_metadata?.username
+                    || currentUser.email?.split('@')[0]
+                    || 'Player';
+                const rating = currentProfile?.rating ?? playerData.rating ?? 2.0;
+                authBtn.textContent = displayName;
                 authBtn.classList.add('signed-in');
-                signoutBtn.style.display = 'flex';
-                // Update avatar
+                if (signoutBtn) signoutBtn.style.display = 'flex';
                 document.getElementById('menu-avatar').textContent =
-                    currentProfile.avatar_emoji || currentProfile.username[0].toUpperCase();
-                document.getElementById('menu-username').textContent = currentProfile.username;
-                document.getElementById('menu-rating').textContent = 'Rating: ' + currentProfile.rating.toFixed(1);
+                    (currentProfile?.avatar_emoji) || displayName[0].toUpperCase();
+                document.getElementById('menu-username').textContent = displayName;
+                document.getElementById('menu-rating').textContent = 'Rating: ' + rating.toFixed(1);
             } else {
                 authBtn.textContent = 'Sign In';
                 authBtn.classList.remove('signed-in');
-                signoutBtn.style.display = 'none';
+                if (signoutBtn) signoutBtn.style.display = 'none';
             }
         }
 
