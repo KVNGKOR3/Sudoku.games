@@ -3777,44 +3777,36 @@
         init();
 
     // ============================================================
-    // SERVICE WORKER REGISTRATION
+    // SERVICE WORKER — registered in index.html <head>
+    // Here we just hook into the already-registered SW for update toasts
     // ============================================================
     let swRegistration = null;
     let deferredInstallPrompt = null;
 
     if ('serviceWorker' in navigator) {
-        window.addEventListener('load', async () => {
-            try {
-                swRegistration = await navigator.serviceWorker.register('./sw2.js');
-                console.log('[PWA] SW registered ✓ scope:', swRegistration.scope);
-                console.log('[PWA] SW state:', swRegistration.active?.state || 'installing');
+        navigator.serviceWorker.ready.then(reg => {
+            swRegistration = reg;
+            console.log('[PWA] SW ready ✓ scope:', reg.scope);
 
-                // Check for waiting update
-                if (swRegistration.waiting) showUpdateToast(swRegistration.waiting);
+            // Check for waiting update
+            if (reg.waiting) showUpdateToast(reg.waiting);
 
-                swRegistration.addEventListener('updatefound', () => {
-                    const newSW = swRegistration.installing;
-                    console.log('[PWA] SW update found, state:', newSW.state);
-                    newSW.addEventListener('statechange', () => {
-                        console.log('[PWA] SW state changed:', newSW.state);
-                        if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                            showUpdateToast(newSW);
-                        }
-                    });
+            reg.addEventListener('updatefound', () => {
+                const newSW = reg.installing;
+                console.log('[PWA] SW update found');
+                newSW.addEventListener('statechange', () => {
+                    if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                        showUpdateToast(newSW);
+                    }
                 });
-
-                // Page reload after SW takes control
-                let refreshing = false;
-                navigator.serviceWorker.addEventListener('controllerchange', () => {
-                    if (!refreshing) { refreshing = true; location.reload(); }
-                });
-
-            } catch (e) {
-                console.error('[PWA] SW registration FAILED:', e.message, e);
-            }
+            });
         });
-    } else {
-        console.warn('[PWA] Service workers not supported in this browser');
+
+        // Page reload after SW takes control
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!refreshing) { refreshing = true; location.reload(); }
+        });
     }
 
     function showUpdateToast(swWaiting) {

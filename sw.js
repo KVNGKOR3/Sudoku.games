@@ -106,7 +106,8 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       fetch(request).then(response => {
         if (response.ok) {
-          caches.open(CACHE_STATIC).then(cache => cache.put(request, response.clone()));
+          const clone = response.clone();
+          caches.open(CACHE_STATIC).then(cache => cache.put(request, clone));
         }
         return response;
       }).catch(async () => {

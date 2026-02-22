@@ -26,17 +26,23 @@
     <meta property="og:type" content="website">
     <meta name="twitter:card" content="summary">
 
-    <!-- SW cleanup: unregister any old workers with wrong scope, then re-register -->
+    <!-- Service Worker registration -->
     <script>
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(regs => {
-          regs.forEach(reg => {
-            // Remove any SW not scoped to our exact path
-            if (!reg.scope.endsWith('/Sudoku.games/')) {
-              reg.unregister();
-              console.log('[SW] Unregistered stale SW:', reg.scope);
-            }
+        window.addEventListener('load', () => {
+          // Unregister any stale workers with wrong scope first
+          navigator.serviceWorker.getRegistrations().then(regs => {
+            regs.forEach(reg => {
+              if (!reg.scope.endsWith('/Sudoku.games/')) {
+                reg.unregister();
+                console.log('[SW] Unregistered stale SW:', reg.scope);
+              }
+            });
           });
+          // Register SW
+          navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('[PWA] SW registered:', reg.scope))
+            .catch(err => console.error('[PWA] SW registration failed:', err));
         });
       }
     </script>
