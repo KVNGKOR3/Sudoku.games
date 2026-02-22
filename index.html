@@ -26,23 +26,17 @@
     <meta property="og:type" content="website">
     <meta name="twitter:card" content="summary">
 
-    <!-- Service Worker registration -->
+    <!-- SW cleanup: unregister any old workers with wrong scope, then re-register -->
     <script>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          // Unregister any stale workers with wrong scope first
-          navigator.serviceWorker.getRegistrations().then(regs => {
-            regs.forEach(reg => {
-              if (!reg.scope.endsWith('/Sudoku.games/')) {
-                reg.unregister();
-                console.log('[SW] Unregistered stale SW:', reg.scope);
-              }
-            });
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          regs.forEach(reg => {
+            // Remove any SW not scoped to our exact path
+            if (!reg.scope.endsWith('/Sudoku.games/')) {
+              reg.unregister();
+              console.log('[SW] Unregistered stale SW:', reg.scope);
+            }
           });
-          // Register SW
-          navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('[PWA] SW registered:', reg.scope))
-            .catch(err => console.error('[PWA] SW registration failed:', err));
         });
       }
     </script>
@@ -126,6 +120,11 @@
             <button class="side-menu-item" data-page="leaderboard">
                 <span class="side-menu-icon">🏆</span>
                 <span>Leaderboard</span>
+            </button>
+            <button class="side-menu-item" data-page="tournaments">
+                <span class="side-menu-icon">⚔️</span>
+                <span>Tournaments</span>
+                <span class="friends-badge" id="tournaments-badge" style="display:none;">0</span>
             </button>
             <button class="side-menu-item" data-page="history">
                 <span class="side-menu-icon">📊</span>
@@ -980,6 +979,122 @@ create policy "public rw" on sudoku_rooms
                 <button class="action-btn btn-primary" id="auth-submit-btn">Sign In</button>
                 <button class="action-btn btn-secondary" id="auth-toggle-btn">No account? Sign Up</button>
                 <button class="action-btn" id="auth-skip-btn" style="background:none;color:var(--text-muted);font-size:0.8rem;padding:6px;">Continue as guest</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ============================================
+         TOURNAMENTS PAGE
+         ============================================ -->
+    <div class="history-page" id="tournaments-page">
+        <header class="header">
+            <div class="header-left">
+                <button class="menu-btn" id="tournaments-menu-btn">
+                    <span></span><span></span><span></span>
+                </button>
+                <span class="logo">Tournaments</span>
+            </div>
+            <button id="create-tournament-btn" style="
+                background:#d59020;color:#161512;border:none;padding:7px 14px;
+                border-radius:7px;font-weight:700;font-size:0.82rem;cursor:pointer;
+                display:none;">
+                + Create
+            </button>
+        </header>
+        <div class="main-content">
+
+            <!-- Active tournaments -->
+            <div class="page-header">
+                <div class="page-title">Live &amp; Upcoming</div>
+                <div class="page-subtitle">Join a tournament or create your own</div>
+            </div>
+            <div id="tournaments-list">
+                <div class="empty-state" style="padding:40px 0;color:#555;">Loading…</div>
+            </div>
+
+            <!-- Past tournaments -->
+            <div class="section-label" style="margin-top:24px;">Recently Ended</div>
+            <div id="tournaments-past">
+                <div class="empty-state" style="color:#555;">—</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Tournament Modal -->
+    <div class="modal-overlay" id="create-tournament-modal">
+        <div class="modal" style="max-width:380px;">
+            <div class="modal-header">
+                <div class="modal-title">Create Tournament</div>
+                <div class="modal-subtitle">Anyone can join via the link</div>
+            </div>
+            <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:14px;">
+                <input type="text" class="auth-input" id="t-name" placeholder="Tournament name" maxlength="50">
+
+                <select class="auth-input" id="t-time-control" style="background:#262421;color:#bababa;border:1px solid #3a3a3a;">
+                    <option value="2+0">2+0 Bullet</option>
+                    <option value="5+0" selected>5+0 Blitz</option>
+                    <option value="10+0">10+0 Rapid</option>
+                    <option value="15+0">15+0 Rapid</option>
+                    <option value="20+0">20+0 Classical</option>
+                </select>
+
+                <select class="auth-input" id="t-icon" style="background:#262421;color:#bababa;border:1px solid #3a3a3a;">
+                    <option value="trophy">🏆 Trophy</option>
+                    <option value="fire">🔥 Fire</option>
+                    <option value="bolt">⚡ Bolt</option>
+                    <option value="star">⭐ Star</option>
+                    <option value="crown">👑 Crown</option>
+                </select>
+
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                    <label style="color:#777;font-size:0.8rem;">Duration</label>
+                    <select class="auth-input" id="t-duration" style="background:#262421;color:#bababa;border:1px solid #3a3a3a;">
+                        <option value="30">30 minutes</option>
+                        <option value="60">1 hour</option>
+                        <option value="120" selected>2 hours</option>
+                        <option value="360">6 hours</option>
+                        <option value="1440">24 hours</option>
+                        <option value="10080">7 days</option>
+                    </select>
+                </div>
+
+                <div id="create-tournament-error" style="color:#c55;font-size:0.78rem;min-height:16px;"></div>
+
+                <button class="action-btn btn-primary" id="create-tournament-submit">Create Tournament</button>
+                <button class="action-btn btn-secondary" id="create-tournament-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tournament Detail Modal -->
+    <div class="modal-overlay" id="tournament-detail-modal">
+        <div class="modal" style="max-width:400px;">
+            <div class="modal-header">
+                <div class="modal-title" id="td-name">Tournament</div>
+                <div class="modal-subtitle" id="td-meta"></div>
+            </div>
+            <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="text-align:center;flex:1;">
+                        <div style="font-size:1.6rem;font-weight:700;color:#d59020;" id="td-players">0</div>
+                        <div style="font-size:0.75rem;color:#777;">Players</div>
+                    </div>
+                    <div style="text-align:center;flex:1;">
+                        <div style="font-size:1.6rem;font-weight:700;color:#d59020;" id="td-time-left">—</div>
+                        <div style="font-size:0.75rem;color:#777;">Time Left</div>
+                    </div>
+                </div>
+                <div style="background:#1a1816;border-radius:8px;padding:12px;font-size:0.82rem;color:#777;line-height:1.6;">
+                    Join this tournament and play rated games. Your results count toward the leaderboard for this event.
+                    Share the link below to invite others!
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;background:#1a1816;border-radius:8px;padding:10px 12px;">
+                    <div style="flex:1;font-size:0.78rem;color:#bababa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="td-link"></div>
+                    <button onclick="copyTournamentLink()" style="background:#d59020;color:#161512;border:none;padding:5px 10px;border-radius:5px;font-size:0.75rem;font-weight:700;cursor:pointer;white-space:nowrap;">Copy</button>
+                </div>
+                <button class="action-btn btn-primary" id="td-join-btn">Join Tournament</button>
+                <button class="action-btn btn-secondary" id="td-close-btn">Close</button>
             </div>
         </div>
     </div>
