@@ -1,0 +1,10 @@
+{
+  "web_apps": [
+    {
+      "manifest": "https://sudoku-gamers.github.io/Sudoku.games/manifest.json",
+      "details": {
+        "paths": ["/*"]
+      }
+    }
+  ]
+}
