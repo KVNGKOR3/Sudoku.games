@@ -2512,7 +2512,7 @@
             if (!container) return;
 
             if (error || !data || data.length === 0) {
-                container.innerHTML = '<div style="color:#555;font-size:0.85rem;padding:12px 0;">No active tournaments. <span style="color:#d59020;cursor:pointer;" onclick="document.querySelector('[data-page=tournaments]').click()">Create one →</span></div>';
+                container.innerHTML = `<div style="color:#555;font-size:0.85rem;padding:12px 0;">No active tournaments. <span style="color:#d59020;cursor:pointer;" onclick="document.querySelector('[data-page=tournaments]').click()">Create one →</span></div>`;
                 return;
             }
 
