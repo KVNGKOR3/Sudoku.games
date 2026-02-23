@@ -108,6 +108,19 @@
   ],
   "shortcuts": [
     {
+      "name": "My Streak",
+      "short_name": "Streak",
+      "description": "View your daily play streak",
+      "url": "/Sudoku.games/?shortcut=streak",
+      "icons": [
+        {
+          "src": "icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
       "name": "Quick Match",
       "short_name": "Quick",
       "description": "Jump straight into a quick match",

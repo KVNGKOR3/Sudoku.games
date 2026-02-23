@@ -3913,7 +3913,6 @@
             loadLeaderboard();
             loadFriends();
             loadGameHistory();
-            listenForChallenges();
         }
 
         function onAuthSignOut() {
@@ -4300,177 +4299,13 @@
             loadFriends();
         }
 
-        // ============================================================
-        // FRIEND CHALLENGE SYSTEM
-        // ============================================================
-        let _challengeSubscription = null;
-
-        async function challengeFriend(profile) {
-            if (!supabaseClient || !currentUser) {
-                showToast('Sign in to challenge friends', 2000);
-                return;
-            }
-
-            showToast(`Sending challenge to ${profile.username}…`, 2000);
-
-            // 1. Create the room first
-            const roomId = generateRoomId();
-            const puzzleData = generateSudoku(gameState.difficulty, gameState.timeLimit);
-            onlineState.roomId     = roomId;
-            onlineState.playerSlot = 1;
-            onlineState.isHost     = true;
-            onlineState.appliedMoves = new Set();
-            onlineState._puzzleData  = puzzleData;
-
-            const roomData = {
-                id: roomId,
-                state: {
-                    puzzle:      puzzleData.puzzle,
-                    solution:    puzzleData.solution,
-                    timeLimit:   gameState.timeLimit,
-                    difficulty:  gameState.difficulty,
-                    gameMode:    gameState.gameMode,
-                    status:      'waiting',
-                    p1Name:      playerData.settings.username,
-                    p2Name:      null,
-                    scores:      { p1: 0, p2: 0 },
-                    currentPlayer: 1,
-                    moves:       [],
-                },
-                updated_at: new Date().toISOString()
-            };
-
-            const { error: roomErr } = await supabaseClient.from('sudoku_rooms').upsert(roomData);
-            if (roomErr) { showToast('Error creating room', 2000); return; }
-
-            // 2. Insert challenge record
-            const { error: chalErr } = await supabaseClient.from('challenges').insert({
-                from_user_id:   currentUser.id,
-                from_username:  playerData.settings.username,
-                to_user_id:     profile.id,
-                to_username:    profile.username,
-                room_id:        roomId,
-                time_control:   gameState.timeLimit,
-                game_mode:      gameState.gameMode,
-                status:         'pending',
-                created_at:     new Date().toISOString(),
-                expires_at:     new Date(Date.now() + 5 * 60000).toISOString(), // 5 min expiry
-            });
-
-            if (chalErr) { showToast('Error sending challenge: ' + chalErr.message, 3000); return; }
-
-            // 3. Navigate to lobby and show waiting overlay
+        function challengeFriend(profile) {
+            showToast(`Creating room to challenge ${profile.username}…`, 2000);
+            // Navigate to lobby and auto-create a room
             document.querySelector('[data-page="lobby"]').click();
-            showWaitingOverlay(roomId);
-            subscribeToRoom(roomId);
-
-            // Show a specific message in the waiting overlay
-            const waitTitle = document.getElementById('waiting-title');
-            if (waitTitle) waitTitle.textContent = `Waiting for ${profile.username}…`;
-            const waitSub = document.getElementById('matchmaking-info');
-            if (waitSub) waitSub.textContent = 'Challenge sent! They have 5 minutes to join.';
-        }
-
-        function listenForChallenges() {
-            if (!supabaseClient || !currentUser) return;
-            if (_challengeSubscription) {
-                supabaseClient.removeChannel(_challengeSubscription);
-            }
-
-            _challengeSubscription = supabaseClient
-                .channel('challenges-for-' + currentUser.id)
-                .on('postgres_changes', {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'challenges',
-                    filter: `to_user_id=eq.${currentUser.id}`
-                }, (payload) => {
-                    const ch = payload.new;
-                    if (ch.status === 'pending' && new Date(ch.expires_at) > new Date()) {
-                        showChallengePopup(ch);
-                    }
-                })
-                .subscribe();
-        }
-
-        function showChallengePopup(challenge) {
-            // Remove any existing popup
-            const existing = document.getElementById('challenge-popup');
-            if (existing) existing.remove();
-
-            const timeControl = challenge.time_control
-                ? Math.floor(challenge.time_control / 60) + '+0'
-                : '10+0';
-
-            const popup = document.createElement('div');
-            popup.id = 'challenge-popup';
-            popup.style.cssText = `
-                position: fixed; bottom: 80px; left: 16px; right: 16px; z-index: 9999;
-                background: #1e1c19; border: 2px solid #d59020; border-radius: 12px;
-                padding: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.7);
-                animation: slideUp 0.3s ease;
-            `;
-            popup.innerHTML = `
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-                    <div style="font-size:1.8rem;">⚔️</div>
-                    <div>
-                        <div style="font-weight:700;color:#fff;font-size:0.95rem;">
-                            ${challenge.from_username} challenged you!
-                        </div>
-                        <div style="color:#777;font-size:0.78rem;">
-                            ${timeControl} • ${challenge.game_mode === 'passplay' ? 'Pass & Play' : 'Simultaneous'}
-                        </div>
-                    </div>
-                </div>
-                <div style="display:flex;gap:8px;">
-                    <button onclick="acceptChallenge('${challenge.room_id}', '${challenge.id}')"
-                        style="flex:1;background:#d59020;color:#161512;border:none;padding:10px;
-                        border-radius:8px;font-weight:700;font-size:0.9rem;cursor:pointer;">
-                        ⚔ Accept
-                    </button>
-                    <button onclick="declineChallenge('${challenge.id}')"
-                        style="flex:1;background:#262421;color:#bababa;border:1px solid #3a3a3a;
-                        padding:10px;border-radius:8px;font-weight:700;font-size:0.9rem;cursor:pointer;">
-                        Decline
-                    </button>
-                </div>
-            `;
-
-            document.body.appendChild(popup);
-
-            // Auto-dismiss after 5 minutes
-            const expiresIn = new Date(challenge.expires_at) - Date.now();
-            if (expiresIn > 0) {
-                setTimeout(() => {
-                    if (document.getElementById('challenge-popup')) {
-                        showToast('Challenge expired', 1500);
-                        popup.remove();
-                    }
-                }, expiresIn);
-            }
-
-            // Vibrate to alert
-            if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]);
-        }
-
-        window.acceptChallenge = async function(roomId, challengeId) {
-            document.getElementById('challenge-popup')?.remove();
-
-            // Mark challenge as accepted
-            await supabaseClient.from('challenges')
-                .update({ status: 'accepted' })
-                .eq('id', challengeId);
-
-            // Join the room directly
-            await joinOnlineRoom(roomId);
-        }
-
-        window.declineChallenge = async function(challengeId) {
-            document.getElementById('challenge-popup')?.remove();
-            await supabaseClient.from('challenges')
-                .update({ status: 'declined' })
-                .eq('id', challengeId);
-            showToast('Challenge declined', 1500);
+            setTimeout(() => {
+                if (supabaseClient) createOnlineRoom();
+            }, 500);
         }
 
         function setupFriendsListeners() {
@@ -4515,6 +4350,16 @@
 
         function saveDailyStreak(data) {
             localStorage.setItem('sudoku_daily_streak', JSON.stringify(data));
+            // Sync to Supabase so streak persists across devices and reinstalls
+            if (supabaseClient && currentUser) {
+                supabaseClient.from('profiles').update({
+                    current_streak: data.streak,
+                    best_streak:    Math.max(data.bestStreak, data.streak),
+                    last_played_date: data.lastPlayedDate,
+                }).eq('id', currentUser.id).then(({ error }) => {
+                    if (error) console.warn('[Streak] Supabase sync failed:', error.message);
+                });
+            }
         }
 
         function recordDailyGame() {
@@ -4840,8 +4685,44 @@
     // ============================================================
     window.addEventListener('DOMContentLoaded', () => {
         const params = new URLSearchParams(location.search);
+        const shortcut = params.get('shortcut');
+
+        if (shortcut === 'streak') {
+            // Open profile page focused on streak after app loads
+            setTimeout(() => {
+                document.querySelector('[data-page="profile"]')?.click();
+                showToast('🔥 Your streak is shown on this page', 2500);
+            }, 1000);
+        }
+
+        if (shortcut === 'quick') {
+            setTimeout(() => {
+                gameState.timeLimit = 600;
+                gameState.gameMode  = 'simultaneous';
+                gameState.vsAI      = false;
+                const qmBtn = document.getElementById('quick-match-btn');
+                if (qmBtn) qmBtn.click();
+            }, 1000);
+        }
+
+        if (shortcut === 'ai') {
+            setTimeout(() => {
+                gameState.timeLimit  = 600;
+                gameState.gameMode   = 'simultaneous';
+                gameState.vsAI       = true;
+                gameState.aiDifficulty = 'medium';
+                if (typeof startGame === 'function') startGame();
+            }, 800);
+        }
+
+        if (shortcut === 'room') {
+            setTimeout(() => {
+                const btn = document.getElementById('create-room-btn');
+                if (btn) btn.click();
+            }, 1200);
+        }
+
         if (params.get('quick') === 'ai') {
-            // Auto-start quick AI game after a short delay
             setTimeout(() => {
                 gameState.timeLimit = 600;
                 gameState.gameMode = 'simultaneous';
