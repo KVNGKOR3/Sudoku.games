@@ -951,11 +951,8 @@
             // Start game
             document.getElementById('start-game-btn').addEventListener('click', startGame);
             document.getElementById('solo-sudoku-btn').addEventListener('click', () => {
-                gameState.gameMode  = 'solo';
-                gameState.vsAI      = false;
-                gameState.timeLimit = Infinity; // no time limit — timer counts UP
-                // Use whatever difficulty is currently selected (defaults to 'medium')
-                startGame();
+                // Open difficulty picker — those buttons set gameMode='solo' and call startGame()
+                document.getElementById('difficulty-modal').classList.add('active');
             });
 
             // Difficulty selection (for puzzles)
@@ -4698,11 +4695,8 @@
 
         if (shortcut === 'quick') {
             setTimeout(() => {
-                gameState.gameMode  = 'solo';
-                gameState.vsAI      = false;
-                gameState.timeLimit = Infinity;
-                if (typeof startGame === 'function') startGame();
-            }, 1000);
+                document.getElementById('difficulty-modal')?.classList.add('active');
+            }, 800);
         }
 
         if (shortcut === 'ai') {
