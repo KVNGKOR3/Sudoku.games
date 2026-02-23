@@ -121,9 +121,9 @@
       ]
     },
     {
-      "name": "Quick Match",
+      "name": "Solo Sudoku",
       "short_name": "Quick",
-      "description": "Jump straight into a quick match",
+      "description": "Play a solo sudoku puzzle with a count-up timer",
       "url": "/Sudoku.games/?shortcut=quick",
       "icons": [
         {
