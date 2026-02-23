@@ -637,6 +637,50 @@ create policy "public rw" on sudoku_rooms
                 <button class="num-pad-btn" data-num="9">9<span class="num-remaining" id="remaining-9">9</span></button>
             </div>
         </div>
+
+        <!-- ═══ LIVE CHAT (online games only) ═══════════════════ -->
+        <!-- Floating toggle button -->
+        <button id="chat-fab" aria-label="Chat with opponent" style="display:none;">
+            💬<span id="chat-unread" class="chat-unread-dot" style="display:none;"></span>
+        </button>
+
+        <!-- Chat panel — slides up from bottom -->
+        <div id="chat-panel" class="chat-panel" aria-hidden="true">
+            <div class="chat-drag-handle"></div>
+            <div class="chat-header">
+                <div class="chat-header-left">
+                    <span class="chat-header-icon">💬</span>
+                    <span class="chat-header-title">Live Chat</span>
+                    <span id="chat-opp-label" class="chat-opp-label"></span>
+                </div>
+                <button id="chat-close-btn" class="chat-close-btn" aria-label="Close chat">✕</button>
+            </div>
+            <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
+            <div id="chat-typing-indicator" class="chat-typing" aria-live="polite"></div>
+            <!-- Quick-fire reaction pills -->
+            <div class="chat-reactions" role="group" aria-label="Quick reactions">
+                <button class="chat-pill" data-msg="👍 GG!">👍 GG!</button>
+                <button class="chat-pill" data-msg="🔥 Nice move!">🔥 Nice!</button>
+                <button class="chat-pill" data-msg="😅 Close one!">😅 Close!</button>
+                <button class="chat-pill" data-msg="😂 Lucky!">😂 Lucky!</button>
+                <button class="chat-pill" data-msg="🤝 Rematch?">🤝 Rematch?</button>
+                <button class="chat-pill" data-msg="🏳️ Good game!">🏳️ GG WP!</button>
+            </div>
+            <!-- Text input -->
+            <div class="chat-input-row">
+                <input id="chat-input" class="chat-input" type="text"
+                       placeholder="Say something…" maxlength="140"
+                       autocomplete="off" autocorrect="on" spellcheck="true">
+                <button id="chat-send-btn" class="chat-send-btn" aria-label="Send">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Incoming message preview (when chat is closed) -->
+        <div id="chat-preview" class="chat-preview" style="display:none;"></div>
     </div>
 
     <!-- ============================================

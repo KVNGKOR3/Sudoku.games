@@ -1344,6 +1344,7 @@
             gameScreen.classList.remove('active');
             lobby.style.display = 'block';
             checkAndShowOngoingBanner();
+            chatDestroy(); // hide & reset chat
         }
 
         // ============================================
@@ -3547,6 +3548,13 @@
                     event: 'UPDATE', schema: 'public',
                     table: 'sudoku_rooms', filter: 'id=eq.' + roomId
                 }, (payload) => handleRoomUpdate(payload.new.state))
+                // ── Chat: receive messages over broadcast (no DB write needed) ──
+                .on('broadcast', { event: 'chat' }, ({ payload }) => {
+                    chatReceiveMessage(payload);
+                })
+                .on('broadcast', { event: 'typing' }, ({ payload }) => {
+                    chatShowTyping(payload.name);
+                })
                 .subscribe((status) => {
                     console.log('[Realtime] subscription status:', status);
                 });
@@ -3698,6 +3706,9 @@
             updateRemainingCounts();
             requestAnimationFrame(gameLoop);
             vibrate([50, 30, 50]);
+
+            // Show chat for online games
+            chatInit(oppName);
         }
 
         function showWaitingOverlay(roomId) {
@@ -5110,3 +5121,260 @@
         });
 
     })();
+
+    // ================================================================
+    // LIVE CHAT SYSTEM
+    // Uses Supabase Realtime broadcast — no DB table required.
+    // Messages are ephemeral (room session only).
+    // ================================================================
+    const chat = {
+        open: false,
+        unread: 0,
+        oppName: 'Opponent',
+        myName: 'You',
+        typingTimer: null,
+        typingClearTimer: null,
+        previewTimer: null,
+    };
+
+    function chatMyName() {
+        return currentProfile?.username || playerData.settings.username || 'Player';
+    }
+
+    function chatInit(oppName) {
+        chat.oppName = oppName || 'Opponent';
+        chat.myName  = chatMyName();
+        chat.open    = false;
+        chat.unread  = 0;
+
+        // Clear messages
+        const msgs = document.getElementById('chat-messages');
+        if (msgs) msgs.innerHTML = '';
+
+        // Update opponent label
+        const lbl = document.getElementById('chat-opp-label');
+        if (lbl) lbl.textContent = 'vs ' + chat.oppName;
+
+        // System welcome message
+        chatAddMessage({ type: 'system', text: 'Chat is live — say hi! 👋' });
+
+        // Show FAB
+        const fab = document.getElementById('chat-fab');
+        if (fab) fab.style.display = 'flex';
+
+        // Wire up events (idempotent — remove first)
+        chatBindEvents();
+    }
+
+    function chatDestroy() {
+        const fab   = document.getElementById('chat-fab');
+        const panel = document.getElementById('chat-panel');
+        const prev  = document.getElementById('chat-preview');
+        if (fab)   { fab.style.display = 'none'; fab.classList.remove('has-msg'); }
+        if (panel) { panel.classList.remove('open'); panel.setAttribute('aria-hidden','true'); }
+        if (prev)  prev.style.display = 'none';
+        clearTimeout(chat.previewTimer);
+        clearTimeout(chat.typingClearTimer);
+        chat.open = false;
+        chat.unread = 0;
+    }
+
+    function chatOpen() {
+        const panel = document.getElementById('chat-panel');
+        if (!panel) return;
+        panel.classList.add('open');
+        panel.setAttribute('aria-hidden', 'false');
+        chat.open = true;
+        chat.unread = 0;
+        chatUpdateBadge();
+        // scroll to bottom
+        const msgs = document.getElementById('chat-messages');
+        if (msgs) msgs.scrollTop = msgs.scrollHeight;
+        // focus input
+        setTimeout(() => {
+            document.getElementById('chat-input')?.focus();
+        }, 300);
+        // hide preview
+        const prev = document.getElementById('chat-preview');
+        if (prev) prev.style.display = 'none';
+        vibrate(20);
+    }
+
+    function chatClose() {
+        const panel = document.getElementById('chat-panel');
+        if (!panel) return;
+        panel.classList.remove('open');
+        panel.setAttribute('aria-hidden', 'true');
+        chat.open = false;
+        document.getElementById('chat-input')?.blur();
+        vibrate(20);
+    }
+
+    function chatUpdateBadge() {
+        const fab  = document.getElementById('chat-fab');
+        const dot  = document.getElementById('chat-unread');
+        if (!fab || !dot) return;
+        if (chat.unread > 0 && !chat.open) {
+            fab.classList.add('has-msg');
+            dot.style.display = 'block';
+        } else {
+            fab.classList.remove('has-msg');
+            dot.style.display = 'none';
+        }
+    }
+
+    function chatSend() {
+        const input = document.getElementById('chat-input');
+        if (!input) return;
+        const text = input.value.trim();
+        if (!text) return;
+        input.value = '';
+        chatBroadcast(text);
+        chatAddMessage({ type: 'me', name: chat.myName, text });
+        vibrate(15);
+    }
+
+    function chatSendQuick(text) {
+        chatBroadcast(text);
+        chatAddMessage({ type: 'me', name: chat.myName, text });
+        vibrate(15);
+    }
+
+    // Send via Supabase broadcast (zero latency, no DB write)
+    function chatBroadcast(text) {
+        if (!supabaseClient || !onlineState.subscription) return;
+        onlineState.subscription.send({
+            type: 'broadcast',
+            event: 'chat',
+            payload: {
+                name: chat.myName,
+                text: text,
+                t: Date.now(),
+            }
+        });
+    }
+
+    // Broadcast typing event (throttled to 1/2s)
+    let _chatTypingLast = 0;
+    function chatBroadcastTyping() {
+        if (!supabaseClient || !onlineState.subscription) return;
+        const now = Date.now();
+        if (now - _chatTypingLast < 2000) return;
+        _chatTypingLast = now;
+        onlineState.subscription.send({
+            type: 'broadcast',
+            event: 'typing',
+            payload: { name: chat.myName }
+        });
+    }
+
+    // Receive an incoming chat message
+    function chatReceiveMessage(payload) {
+        if (!payload?.text) return;
+        chatAddMessage({ type: 'them', name: payload.name || chat.oppName, text: payload.text });
+        // clear typing indicator when they actually send
+        chatClearTyping();
+        if (!chat.open) {
+            chat.unread++;
+            chatUpdateBadge();
+            chatShowPreview(payload.name || chat.oppName, payload.text);
+            // also vibrate for incoming msg
+            vibrate([30, 20, 30]);
+        }
+    }
+
+    // Show opponent's name as typing
+    function chatShowTyping(name) {
+        const el = document.getElementById('chat-typing-indicator');
+        if (el) el.textContent = (name || chat.oppName) + ' is typing…';
+        clearTimeout(chat.typingClearTimer);
+        chat.typingClearTimer = setTimeout(chatClearTyping, 3000);
+    }
+
+    function chatClearTyping() {
+        const el = document.getElementById('chat-typing-indicator');
+        if (el) el.textContent = '';
+    }
+
+    // Add a bubble to the messages list
+    function chatAddMessage({ type, name, text }) {
+        const msgs = document.getElementById('chat-messages');
+        if (!msgs) return;
+
+        const wrap = document.createElement('div');
+        wrap.className = 'chat-bubble-wrap ' + (type === 'me' ? 'me' : type === 'them' ? 'them' : 'system');
+
+        if (type === 'system') {
+            wrap.innerHTML = `<div class="chat-bubble">${escapeHtml(text)}</div>`;
+        } else {
+            const now  = new Date();
+            const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            wrap.innerHTML = `
+                <div class="chat-bubble">${escapeHtml(text)}</div>
+                <div class="chat-meta">${time}</div>`;
+        }
+
+        msgs.appendChild(wrap);
+        // auto-scroll to latest
+        msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    // Show a mini preview toast when panel is closed
+    function chatShowPreview(name, text) {
+        const prev = document.getElementById('chat-preview');
+        if (!prev) return;
+        prev.innerHTML = `<strong>${escapeHtml(name)}</strong>${escapeHtml(text.length > 60 ? text.slice(0,60)+'…' : text)}`;
+        prev.style.display = 'block';
+        clearTimeout(chat.previewTimer);
+        chat.previewTimer = setTimeout(() => { prev.style.display = 'none'; }, 4000);
+    }
+
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g,'&amp;')
+            .replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;');
+    }
+
+    // Wire all event listeners (called once per game)
+    let _chatEventsWired = false;
+    function chatBindEvents() {
+        if (_chatEventsWired) return;
+        _chatEventsWired = true;
+
+        // FAB — open panel
+        document.getElementById('chat-fab')?.addEventListener('click', () => {
+            chat.open ? chatClose() : chatOpen();
+        });
+
+        // Close button
+        document.getElementById('chat-close-btn')?.addEventListener('click', chatClose);
+
+        // Send button
+        document.getElementById('chat-send-btn')?.addEventListener('click', chatSend);
+
+        // Enter key sends
+        document.getElementById('chat-input')?.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatSend(); }
+        });
+
+        // Typing broadcast on input
+        document.getElementById('chat-input')?.addEventListener('input', chatBroadcastTyping);
+
+        // Quick-fire pills
+        document.querySelectorAll('.chat-pill').forEach(btn => {
+            btn.addEventListener('click', () => chatSendQuick(btn.dataset.msg));
+        });
+
+        // Swipe down on panel header to close
+        const panel = document.getElementById('chat-panel');
+        if (panel) {
+            let _swipeStartY = 0;
+            panel.addEventListener('touchstart', e => { _swipeStartY = e.touches[0].clientY; }, { passive: true });
+            panel.addEventListener('touchend', e => {
+                const dy = e.changedTouches[0].clientY - _swipeStartY;
+                if (dy > 60) chatClose();
+            }, { passive: true });
+        }
+    }
