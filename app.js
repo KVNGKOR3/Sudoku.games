@@ -4383,7 +4383,7 @@
             document.getElementById('pp-winrate-pct').textContent = winRate + '%';
             setTimeout(() => { document.getElementById('pp-winrate-bar').style.width = winRate + '%'; }, 100);
 
-            const isOnline = _onlineUserIds.has(userId);
+            const isOnline = _onlineUserIds && _onlineUserIds.has(userId);
             document.getElementById('pp-online').textContent = isOnline ? '● Online now' : '○ Offline';
             document.getElementById('pp-online').style.color = isOnline ? '#56d364' : '#555';
 
@@ -4395,8 +4395,7 @@
 
                 const btn = document.createElement('button');
                 btn.className = 'action-btn btn-primary';
-                btn.style.flex = '1';
-
+                btn.style.cssText = 'flex:1;margin:0;';
                 if (!friendship) {
                     btn.textContent = '+ Add Friend';
                     btn.onclick = async () => { await sendFriendRequest(userId, p.username); btn.textContent = '✓ Sent'; btn.disabled = true; };
@@ -4407,6 +4406,7 @@
                     btn.textContent = '⏳ Request Pending';
                     btn.disabled = true;
                     btn.className = 'action-btn btn-secondary';
+                    btn.style.cssText = 'flex:1;margin:0;';
                 }
                 actionsEl.appendChild(btn);
             }
