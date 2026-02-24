@@ -391,66 +391,39 @@
         // SUDOKU GENERATOR
         // ============================================
         // ============================================================
-        // SUDOKU GENERATION ENGINE  (v3 — logic-graded, unique-solution)
+        // SUDOKU GENERATION ENGINE  (v3 — unique-solution, logic-graded)
         // ============================================================
-        //
-        // CLUE TARGETS (given cells remaining after removal):
-        //   Easy      : 36–38  (43–45 removed) → naked/hidden singles only
-        //   Medium    : 30–32  (49–51 removed) → needs naked pairs / pointing pairs
-        //   Hard      : 24–26  (55–57 removed) → needs X-Wing / chains
-        //
-        // TIME CONTROL adjusts the target within each band:
-        //   Bullet (≤2m)   : use easy-band floor (max clues = most visible)
-        //   Blitz  (≤5m)   : use easy-band ceiling
-        //   Rapid  (≤10m)  : use medium-band
-        //   Long   (≤20m)  : use hard-band floor
-        //   Classical(20+) : use hard-band ceiling (fewest clues)
-        //
-        // ALGORITHM:
-        //   1. Generate a complete valid solution (shuffle + backtrack)
-        //   2. Dig holes one at a time in random order
-        //      — After each removal, count solutions (stop at 2)
-        //      — If removing a cell creates 2+ solutions, skip it (put it back)
-        //      — Stop when target clue count is reached OR no more removable cells
-        //   3. This guarantees: unique solution + correct difficulty
-        // ============================================================
-
         function generateSudoku(difficulty, timeLimit) {
             const solution = generateCompleteSolution();
             const puzzle   = solution.map(r => [...r]);
 
-            // ── Clue targets per difficulty ───────────────────────────
-            // (given = cells that stay; fewer givens = harder)
+            // Clue targets (given cells remaining after removal)
             const CLUE_RANGES = {
-                //          [min, max]  (we aim for a random value in this range)
-                easy:   [36, 40],   // 41–45 removed
-                medium: [28, 33],   // 48–53 removed
-                hard:   [22, 27],   // 54–59 removed
+                easy:   [36, 40],
+                medium: [28, 33],
+                hard:   [22, 27],
             };
 
-            // ── Time-control shifts the target within the band ───────
             // Shorter TC → more clues (easier within band)
             // Longer  TC → fewer clues (harder within band)
             function tcShift(tl) {
-                if (tl === Infinity || tl === undefined) return 0; // solo: use pure difficulty
-                if (tl <= 120)  return +4;   // bullet:    push toward easier end
-                if (tl <= 300)  return +2;   // blitz
-                if (tl <= 600)  return  0;   // rapid 10:  neutral
-                if (tl <= 900)  return -2;   // rapid 15
-                if (tl <= 1200) return -3;   // 20 min
-                return                 -4;   // classical 30+: push toward hardest
+                if (!tl || tl === Infinity) return 0;
+                if (tl <= 120)  return +4;
+                if (tl <= 300)  return +2;
+                if (tl <= 600)  return  0;
+                if (tl <= 900)  return -2;
+                if (tl <= 1200) return -3;
+                return                 -4;
             }
 
             const band  = CLUE_RANGES[difficulty] || CLUE_RANGES.medium;
             const shift = tcShift(timeLimit);
-            // Clamp inside valid sudoku range (17 minimum for unique solution)
             const targetGivens = Math.max(17, Math.min(
-                band[1] + shift,   // pick randomly within shifted band
+                band[1] + shift,
                 Math.floor(Math.random() * (band[1] - band[0] + 1)) + band[0] + shift
             ));
 
-            // ── Dig holes ─────────────────────────────────────────────
-            // Build a shuffled list of all 81 cell positions
+            // Dig holes with uniqueness check
             const positions = [];
             for (let r = 0; r < 9; r++)
                 for (let c = 0; c < 9; c++)
@@ -458,25 +431,20 @@
             shuffle(positions);
 
             let givens = 81;
-
             for (const [r, c] of positions) {
                 if (givens <= targetGivens) break;
-
                 const backup = puzzle[r][c];
                 puzzle[r][c] = 0;
-
-                // Count solutions — stop counting after 2 (fast)
                 if (countSolutions(puzzle, 2) === 1) {
-                    givens--;          // unique: keep the hole
+                    givens--;
                 } else {
-                    puzzle[r][c] = backup;  // ambiguous: restore
+                    puzzle[r][c] = backup;
                 }
             }
 
             return { puzzle, solution };
         }
 
-        // ── Shuffle array in-place (Fisher-Yates) ────────────────────
         function shuffle(arr) {
             for (let i = arr.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -484,23 +452,19 @@
             }
         }
 
-        // ── Count solutions up to `limit` (backtracking) ─────────────
-        // Returns 0, 1, or `limit` (stops early once limit is reached)
         function countSolutions(grid, limit) {
-            // Find cell with fewest candidates (MRV heuristic — much faster)
             let bestR = -1, bestC = -1, bestCount = 10;
             for (let r = 0; r < 9; r++) {
                 for (let c = 0; c < 9; c++) {
                     if (grid[r][c] !== 0) continue;
                     const n = candidateCount(grid, r, c);
-                    if (n === 0) return 0;   // dead end
+                    if (n === 0) return 0;
                     if (n < bestCount) { bestCount = n; bestR = r; bestC = c; }
                     if (bestCount === 1) break;
                 }
                 if (bestCount === 1) break;
             }
-            if (bestR === -1) return 1;  // all cells filled → one solution found
-
+            if (bestR === -1) return 1;
             let count = 0;
             for (let num = 1; num <= 9; num++) {
                 if (!isValidPlacement(grid, bestR, bestC, num)) continue;
@@ -527,7 +491,6 @@
 
         function generateCompleteSolution() {
             const grid = Array(9).fill(null).map(() => Array(9).fill(0));
-            // Fill the three diagonal 3×3 boxes independently (they can't conflict)
             for (let box = 0; box < 9; box += 3) fillBox(grid, box, box);
             solveSudoku(grid);
             return grid;
@@ -980,11 +943,8 @@
 
             // Start game
             document.getElementById('start-game-btn').addEventListener('click', startGame);
-            document.getElementById('quick-match-btn').addEventListener('click', () => {
-                gameState.timeLimit = 600;
-                gameState.gameMode = 'simultaneous';
-                gameState.vsAI = false;
-                startGame();
+            document.getElementById('solo-sudoku-btn').addEventListener('click', () => {
+                document.getElementById('difficulty-modal').classList.add('active');
             });
 
             // Difficulty selection (for puzzles)
@@ -4727,12 +4687,8 @@
 
         if (shortcut === 'quick') {
             setTimeout(() => {
-                gameState.timeLimit = 600;
-                gameState.gameMode  = 'simultaneous';
-                gameState.vsAI      = false;
-                const qmBtn = document.getElementById('quick-match-btn');
-                if (qmBtn) qmBtn.click();
-            }, 1000);
+                document.getElementById('difficulty-modal')?.classList.add('active');
+            }, 800);
         }
 
         if (shortcut === 'ai') {
