@@ -4357,41 +4357,75 @@
         async function viewPlayerProfile(userId) {
             if (!supabaseClient) return;
             const modal = document.getElementById('player-profile-modal');
+            if (!modal) return;
             modal.classList.add('active');
 
-            // Reset
             ['pp-username','pp-bullet','pp-blitz','pp-rapid','pp-classical',
              'pp-wins','pp-games','pp-streak','pp-winrate-pct','pp-online'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.textContent = id === 'pp-username' ? 'Loading…' : '—';
             });
-            document.getElementById('pp-avatar').textContent = '…';
-            document.getElementById('pp-winrate-bar').style.width = '0%';
-            document.getElementById('pp-actions').innerHTML = '';
+            const avatarEl = document.getElementById('pp-avatar');
+            if (avatarEl) avatarEl.textContent = '…';
+            const barEl = document.getElementById('pp-winrate-bar');
+            if (barEl) barEl.style.width = '0%';
+            const actionsEl = document.getElementById('pp-actions');
+            if (actionsEl) actionsEl.innerHTML = '';
 
-            const { data: p } = await supabaseClient.from('profiles').select('*').eq('id', userId).single();
-            if (!p) { document.getElementById('pp-username').textContent = 'Player not found'; return; }
+            // Only select columns that definitely exist
+            const { data: p, error } = await supabaseClient
+                .from('profiles')
+                .select('id, username, avatar_emoji, rating, wins, games_played, current_streak, bullet_rating, blitz_rating, rapid_rating, classical_rating')
+                .eq('id', userId)
+                .single();
 
-            document.getElementById('pp-username').textContent = p.username;
-            document.getElementById('pp-avatar').textContent   = p.avatar_emoji || p.username[0].toUpperCase();
-            document.getElementById('pp-bullet').textContent   = (p.bullet_rating    || 2.0).toFixed(1);
-            document.getElementById('pp-blitz').textContent    = (p.blitz_rating     || 2.0).toFixed(1);
-            document.getElementById('pp-rapid').textContent    = (p.rapid_rating     || 2.0).toFixed(1);
-            document.getElementById('pp-classical').textContent= (p.classical_rating || 2.0).toFixed(1);
-            document.getElementById('pp-wins').textContent     = p.wins || 0;
-            document.getElementById('pp-games').textContent    = p.games_played || 0;
-            document.getElementById('pp-streak').textContent   = (p.current_streak || 0) + '🔥';
+            if (error || !p) {
+                // Fallback: try with just basic columns
+                const { data: basic } = await supabaseClient
+                    .from('profiles')
+                    .select('id, username, avatar_emoji, rating, wins, games_played')
+                    .eq('id', userId)
+                    .single();
+
+                if (!basic) {
+                    document.getElementById('pp-username').textContent = 'Could not load profile';
+                    return;
+                }
+
+                document.getElementById('pp-username').textContent = basic.username;
+                if (avatarEl) avatarEl.textContent = basic.avatar_emoji || basic.username[0].toUpperCase();
+                document.getElementById('pp-wins').textContent  = basic.wins || 0;
+                document.getElementById('pp-games').textContent = basic.games_played || 0;
+                // Show single rating for all TC slots as fallback
+                ['pp-bullet','pp-blitz','pp-rapid','pp-classical'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = (basic.rating || 2.0).toFixed(1);
+                });
+                const wr = basic.games_played > 0 ? Math.round((basic.wins / basic.games_played) * 100) : 0;
+                document.getElementById('pp-winrate-pct').textContent = wr + '%';
+                setTimeout(() => { if (barEl) barEl.style.width = wr + '%'; }, 100);
+                return;
+            }
+
+            if (avatarEl) avatarEl.textContent = p.avatar_emoji || p.username[0].toUpperCase();
+            document.getElementById('pp-username').textContent    = p.username;
+            document.getElementById('pp-bullet').textContent      = (p.bullet_rating    || 2.0).toFixed(1);
+            document.getElementById('pp-blitz').textContent       = (p.blitz_rating     || 2.0).toFixed(1);
+            document.getElementById('pp-rapid').textContent       = (p.rapid_rating     || 2.0).toFixed(1);
+            document.getElementById('pp-classical').textContent   = (p.classical_rating || 2.0).toFixed(1);
+            document.getElementById('pp-wins').textContent        = p.wins || 0;
+            document.getElementById('pp-games').textContent       = p.games_played || 0;
+            document.getElementById('pp-streak').textContent      = (p.current_streak || 0) + '🔥';
 
             const winRate = p.games_played > 0 ? Math.round((p.wins / p.games_played) * 100) : 0;
             document.getElementById('pp-winrate-pct').textContent = winRate + '%';
-            setTimeout(() => { document.getElementById('pp-winrate-bar').style.width = winRate + '%'; }, 100);
+            setTimeout(() => { if (barEl) barEl.style.width = winRate + '%'; }, 100);
 
             const isOnline = _onlineUserIds && _onlineUserIds.has(userId);
-            document.getElementById('pp-online').textContent = isOnline ? '● Online now' : '○ Offline';
-            document.getElementById('pp-online').style.color = isOnline ? '#56d364' : '#555';
+            const onlineEl = document.getElementById('pp-online');
+            if (onlineEl) { onlineEl.textContent = isOnline ? '● Online now' : '○ Offline'; onlineEl.style.color = isOnline ? '#56d364' : '#555'; }
 
-            const actionsEl = document.getElementById('pp-actions');
-            if (currentUser && userId !== currentUser.id) {
+            if (actionsEl && currentUser && userId !== currentUser.id) {
                 const { data: friendship } = await supabaseClient.from('friendships').select('id, status')
                     .or(`and(requester_id.eq.${currentUser.id},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${currentUser.id})`)
                     .maybeSingle();
