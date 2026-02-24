@@ -2406,94 +2406,74 @@ body.keyboard-open #sudoku-canvas {
 }
 
 /* ================================================================
-   PROFILE UPGRADE — Avatar, TC Ratings, Puzzle XP
+   PROFILE — TC rating grid (clean, no icons/descriptions)
    ================================================================ */
+.tc-rating-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 4px;
+}
+.tc-rating-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 14px 6px 12px;
+    text-align: center;
+}
+.tc-rating-name {
+    font-size: .65rem;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 6px;
+}
+.tc-rating-val {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--accent-orange);
+    line-height: 1;
+}
 
-/* ── Profile hero ────────────────────────────────────────────── */
+/* ================================================================
+   PROFILE — Avatar hero (simple, no overall rating)
+   ================================================================ */
 .prof-hero {
     display: flex;
     align-items: center;
     gap: 16px;
     padding: 20px 0 16px;
 }
-.prof-avatar-wrap {
-    position: relative;
-    flex-shrink: 0;
-    width: 78px; height: 78px;
-}
+.prof-avatar-wrap { position: relative; flex-shrink: 0; width: 72px; height: 72px; }
 .prof-avatar-img,
 .prof-avatar-init {
-    width: 78px; height: 78px;
-    border-radius: 50%;
+    width: 72px; height: 72px; border-radius: 50%;
     border: 3px solid var(--accent-orange);
 }
 .prof-avatar-img { object-fit: cover; display: block; }
 .prof-avatar-init {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     background: linear-gradient(135deg,#2a2410,#3d3420);
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--accent-orange);
-    user-select: none;
+    font-size: 1.8rem; font-weight: 700; color: var(--accent-orange); user-select: none;
 }
 .prof-avatar-edit-btn {
-    position: absolute;
-    bottom: 0; right: 0;
-    width: 26px; height: 26px;
-    border-radius: 50%;
+    position: absolute; bottom: 0; right: 0;
+    width: 24px; height: 24px; border-radius: 50%;
     background: var(--accent-orange);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: .72rem;
-    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .68rem; cursor: pointer;
     border: 2px solid var(--bg-primary);
-    box-shadow: 0 2px 8px rgba(0,0,0,.5);
-    transition: transform .12s;
 }
-.prof-avatar-edit-btn:active { transform: scale(.9); }
-
 .prof-hero-text { flex: 1; min-width: 0; }
 .prof-hero-name {
-    font-size: 1.35rem;
-    font-weight: 800;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 1.3rem; font-weight: 800; color: var(--text-primary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.prof-hero-since { font-size: .72rem; color: #555; margin: 2px 0 6px; }
-.prof-hero-rating { display: flex; align-items: baseline; gap: 6px; }
-.prof-hero-rating-val {
-    font-size: 2rem;
-    font-weight: 900;
-    color: var(--accent-orange);
-    line-height: 1;
-}
-.prof-hero-rating-lbl { font-size: .7rem; color: #666; }
+.prof-hero-since { font-size: .72rem; color: #555; margin-top: 3px; }
 
-/* ── Time-control grid ───────────────────────────────────────── */
-.tc-grid {
-    display: grid;
-    grid-template-columns: repeat(4,1fr);
-    gap: 8px;
-    margin-bottom: 4px;
-}
-.tc-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 12px 4px 10px;
-    text-align: center;
-}
-.tc-icon  { font-size: 1.1rem; }
-.tc-label { font-size: .62rem; color: #666; text-transform: uppercase; letter-spacing: .04em; margin: 2px 0; }
-.tc-val   { font-size: 1.1rem; font-weight: 800; color: var(--accent-orange); }
-.tc-sub   { font-size: .58rem; color: #444; margin-top: 2px; }
-
-/* ── Puzzle XP bar ───────────────────────────────────────────── */
+/* ================================================================
+   PROFILE — Puzzle XP bar
+   ================================================================ */
 .puzzle-xp-row {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
@@ -2501,192 +2481,39 @@ body.keyboard-open #sudoku-canvas {
     padding: 14px 16px;
 }
 .puzzle-xp-rank { font-size: .9rem; font-weight: 700; color: var(--text-primary); display: block; margin-bottom: 8px; }
-.puzzle-xp-bar-wrap {
-    height: 7px;
-    background: #2a2820;
-    border-radius: 4px;
-    overflow: hidden;
-    margin-bottom: 6px;
-}
+.puzzle-xp-bar-wrap { height: 7px; background: #2a2820; border-radius: 4px; overflow: hidden; margin-bottom: 6px; }
 .puzzle-xp-bar {
-    height: 100%;
+    height: 100%; border-radius: 4px;
     background: linear-gradient(90deg, #b87820, #d59020, #f0b030);
-    border-radius: 4px;
     transition: width .5s cubic-bezier(.34,1.1,.64,1);
 }
 .puzzle-xp-num { font-size: .72rem; color: #555; }
 
 /* ================================================================
-   DISCOVER / FRIENDS TABS
+   FRIENDS — online dot + last seen
    ================================================================ */
-.friends-tabs {
-    display: flex;
-    border-bottom: 1.5px solid var(--border-color);
-    margin: 0 -16px;
-    padding: 0 8px;
-    position: sticky;
-    top: 52px;
-    background: var(--bg-primary);
-    z-index: 10;
+.friend-avatar-wrap { position: relative; flex-shrink: 0; }
+.online-dot {
+    position: absolute; bottom: 1px; right: 1px;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #3fb950;
+    border: 2px solid var(--bg-secondary);
 }
-.friends-tab {
-    flex: 1;
-    background: none;
-    border: none;
-    border-bottom: 2.5px solid transparent;
-    color: #555;
-    font-size: .78rem;
-    font-weight: 600;
-    padding: 12px 4px 10px;
-    cursor: pointer;
-    transition: color .15s, border-color .15s;
-    white-space: nowrap;
-    text-align: center;
-    position: relative;
-    -webkit-tap-highlight-color: transparent;
+.friend-status {
+    font-size: .72rem; color: #555; margin-top: 2px;
 }
-.friends-tab.active { color: var(--accent-orange); border-bottom-color: var(--accent-orange); }
-.tab-dot {
-    display: inline-block;
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: #666;
-    margin-left: 4px;
-    vertical-align: middle;
-    position: relative; top: -1px;
-}
-.tab-dot-alert { background: var(--accent-orange); }
-
-.friends-tab-panel { display: none; padding-top: 10px; }
-.friends-tab-panel.active { display: block; }
-
-/* ── Player row card (discover + friends list) ─────────────── */
-.player-card {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    padding: 11px 10px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    margin-bottom: 8px;
-    cursor: pointer;
-    transition: border-color .12s;
-    -webkit-tap-highlight-color: transparent;
-}
-.player-card:active { border-color: var(--accent-orange); }
-.player-card-rank {
-    font-size: .75rem; font-weight: 700; color: #555;
-    min-width: 26px; text-align: center; flex-shrink: 0;
-}
-.player-card-avatar {
-    width: 40px; height: 40px;
-    border-radius: 50%;
-    background: #2a2410;
-    border: 2px solid #3a3420;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.1rem; font-weight: 700; color: var(--accent-orange);
-    flex-shrink: 0; overflow: hidden;
-}
-.player-card-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-.player-card-info { flex: 1; min-width: 0; }
-.player-card-name {
-    font-size: .88rem; font-weight: 700; color: var(--text-primary);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.player-card-sub { font-size: .7rem; color: #555; margin-top: 2px; }
-.player-card-rating { font-size: 1.05rem; font-weight: 800; color: var(--accent-orange); flex-shrink: 0; }
-
-.discover-more-btn {
-    display: block; width: 100%; margin: 4px 0 14px;
-    padding: 11px; background: var(--bg-secondary);
-    border: 1px solid var(--border-color); border-radius: 10px;
-    color: #666; font-size: .8rem; cursor: pointer; text-align: center;
-}
-.discover-more-btn:active { color: #999; }
+.friend-status.online { color: #3fb950; font-weight: 600; }
 
 /* ================================================================
-   PUBLIC PROFILE MODAL
+   LEADERBOARD — TC tabs (reuse .friends-tab styles)
    ================================================================ */
-.pub-profile-modal {
-    max-width: 380px;
-    padding: 0;
-    overflow: hidden;
-    border-radius: 18px;
-}
-.pub-profile-close {
-    position: absolute; top: 12px; right: 14px;
-    background: none; border: none; color: #555;
-    font-size: .95rem; cursor: pointer; padding: 4px 8px; border-radius: 4px;
-}
-.pub-profile-close:active { background: rgba(255,255,255,.05); }
+.friends-tabs { /* already defined — shared */ }
 
-.pub-prof-hero {
-    background: linear-gradient(160deg,#211d0e,#1a1608);
-    padding: 28px 20px 20px;
-    text-align: center;
-    position: relative;
+/* ================================================================
+   TOURNAMENT — delete button danger style
+   ================================================================ */
+.action-btn[id="td-delete-btn"] {
+    background: rgba(220,50,50,.12);
+    color: #f05a5a;
+    border-color: rgba(240,90,90,.4);
 }
-.pub-prof-avatar-wrap { margin-bottom: 10px; }
-.pub-prof-img {
-    width: 70px; height: 70px; border-radius: 50%; object-fit: cover;
-    border: 3px solid var(--accent-orange); margin: 0 auto; display: block;
-}
-.pub-prof-init {
-    width: 70px; height: 70px; border-radius: 50%;
-    background: linear-gradient(135deg,#2a2410,#3d3420);
-    border: 3px solid var(--accent-orange);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.8rem; font-weight: 700; color: var(--accent-orange); margin: 0 auto;
-}
-.pub-prof-name { font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-bottom: 2px; }
-.pub-prof-since { font-size: .7rem; color: #555; margin-bottom: 10px; }
-.pub-prof-overall span {
-    font-size: 1.8rem; font-weight: 900; color: var(--accent-orange); display: block; line-height: 1;
-}
-.pub-prof-overall small { font-size: .7rem; color: #666; }
-
-.pub-prof-stats {
-    display: grid; grid-template-columns: repeat(4,1fr);
-    border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color);
-}
-.pub-stat {
-    padding: 12px 4px; text-align: center;
-    border-right: 1px solid var(--border-color);
-}
-.pub-stat:last-child { border-right: none; }
-.pub-stat b { font-size: 1.05rem; font-weight: 800; color: var(--text-primary); display: block; }
-.pub-stat span { font-size: .62rem; color: #555; }
-.pub-stat.win b { color: #56d364; }
-.pub-stat.loss b { color: #f05a5a; }
-
-.pub-tc-grid {
-    display: grid; grid-template-columns: repeat(4,1fr);
-    padding: 10px 16px 8px; border-bottom: 1px solid var(--border-color);
-}
-.pub-tc { text-align: center; }
-.pub-tc-val { font-size: .95rem; font-weight: 700; color: var(--accent-orange); }
-.pub-tc-lbl { font-size: .62rem; color: #555; margin-top: 2px; }
-
-.pub-xp-row {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 16px 8px; border-bottom: 1px solid var(--border-color);
-    font-size: .82rem; color: var(--text-primary);
-}
-
-.pub-prof-actions {
-    display: flex; gap: 10px; padding: 14px 16px;
-}
-.pub-prof-btn {
-    flex: 1; padding: 11px; border-radius: 10px;
-    border: 1px solid var(--border-color); background: var(--bg-secondary);
-    color: var(--text-secondary); font-size: .82rem; font-weight: 700;
-    cursor: pointer; transition: background .12s;
-    -webkit-tap-highlight-color: transparent;
-}
-.pub-prof-btn:active { background: var(--bg-tertiary); }
-.pub-prof-btn.primary { background: var(--accent-orange); color: var(--bg-primary); border-color: var(--accent-orange); }
-.pub-prof-btn.primary:active { background: #c07818; }
-
-/* Me highlight in discover list */
-.player-card.is-me { border-color: var(--accent-orange); }

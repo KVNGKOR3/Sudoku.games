@@ -139,6 +139,7 @@
         };
 
         let playerRating = CONFIG.STARTING_RATING;
+        let _activeLbTab = 'bullet'; // tracks which TC leaderboard tab is active
 
         // ============================================
         // PLAYER DATA & STORAGE
@@ -184,10 +185,7 @@
         }
 
         function updateAllDisplays() {
-            // Prefer cloud profile when signed in, fall back to local data
-            const profile = currentProfile || playerData.profile;
             const username = currentProfile?.username || playerData.settings.username || 'Player';
-            const rating = currentProfile?.rating ?? playerRating;
             const gamesPlayed = currentProfile?.games_played ?? playerData.profile.gamesPlayed;
             const wins = currentProfile?.wins ?? playerData.profile.wins;
             const losses = currentProfile?.losses ?? playerData.profile.losses;
@@ -195,13 +193,22 @@
             const bestStreak = currentProfile?.best_streak ?? playerData.profile.bestStreak;
             const avatar = currentProfile?.avatar_emoji || username.charAt(0).toUpperCase();
 
-            // Update rating displays
-            const ratingStr = rating.toFixed(1);
-            document.getElementById('user-rating').textContent = ratingStr;
-            document.getElementById('p1-rating-display').textContent = 'Rating: ' + ratingStr;
-            document.getElementById('menu-rating').textContent = 'Rating: ' + ratingStr;
+            // Side menu shows active TC rating (default to bullet if no games)
+            const tcRating = _activeLbTab === 'blitz'     ? (currentProfile?.blitz_rating     ?? 2.0)
+                           : _activeLbTab === 'rapid'     ? (currentProfile?.rapid_rating     ?? 2.0)
+                           : _activeLbTab === 'classical' ? (currentProfile?.classical_rating ?? 2.0)
+                           :                               (currentProfile?.bullet_rating     ?? 2.0);
+            document.getElementById('menu-rating').textContent = 'Rating: ' + tcRating.toFixed(1);
 
-            // Update username displays
+            // Game screen player bar uses bullet rating by default (updated at game start)
+            const el = document.getElementById('p1-rating-display');
+            if (el) el.textContent = 'Rating: ' + tcRating.toFixed(1);
+
+            // user-rating element removed from lobby — guard in case old HTML still has it
+            const ur = document.getElementById('user-rating');
+            if (ur) ur.textContent = tcRating.toFixed(1);
+
+            // Username displays
             document.getElementById('menu-username').textContent = username;
             document.getElementById('menu-avatar').textContent = avatar;
             document.getElementById('profile-username').textContent = username;
@@ -210,24 +217,87 @@
                 usernameInput.value = username;
             }
 
-            // Update profile stats
-            document.getElementById('profile-rating').textContent = ratingStr;
-            document.getElementById('profile-games').textContent = gamesPlayed;
-            document.getElementById('profile-wins').textContent = wins;
+            // Profile stats
+            document.getElementById('profile-games').textContent  = gamesPlayed;
+            document.getElementById('profile-wins').textContent   = wins;
             document.getElementById('profile-losses').textContent = losses;
-            document.getElementById('profile-draws').textContent = draws;
+            document.getElementById('profile-draws').textContent  = draws;
             document.getElementById('profile-streak').textContent = bestStreak;
 
-            // Update badges
+            // TC ratings on profile — show — if never played that TC
+            const tcMap = {
+                'tc-bullet':    'bullet_rating',
+                'tc-blitz':     'blitz_rating',
+                'tc-rapid':     'rapid_rating',
+                'tc-classical': 'classical_rating',
+            };
+            Object.entries(tcMap).forEach(([elId, field]) => {
+                const tcEl = document.getElementById(elId);
+                if (!tcEl) return;
+                const val = currentProfile?.[field];
+                tcEl.textContent = val != null ? val.toFixed(1) : '—';
+            });
+
+            // Avatar
+            renderOwnAvatar(currentProfile, username);
+            const editLbl = document.getElementById('prof-avatar-edit-lbl');
+            if (editLbl) editLbl.style.display = currentUser ? 'flex' : 'none';
+
+            // Member since
+            const sinceEl = document.getElementById('profile-since');
+            if (sinceEl && currentProfile?.created_at) {
+                const d = new Date(currentProfile.created_at);
+                sinceEl.textContent = 'Member since ' + d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            }
+
+            // Puzzle XP
+            renderPuzzleXP(currentProfile);
+
+            // Badges
             updateBadges();
 
-            // Update settings toggles
+            // Settings
             updateToggle('sound-toggle', playerData.settings.soundEnabled);
             updateToggle('animations-toggle', playerData.settings.animationsEnabled);
-
-            // Update theme select
             const themeSelect = document.getElementById('theme-select');
             if (themeSelect) themeSelect.value = playerData.settings.boardTheme || 'classic';
+        }
+
+        // Render own avatar (image or initials fallback)
+        function renderOwnAvatar(profile, username) {
+            const img  = document.getElementById('prof-avatar-img');
+            const init = document.getElementById('prof-avatar-init');
+            if (!img || !init) return;
+            if (profile?.avatar_url) {
+                img.src = profile.avatar_url; img.style.display = 'block'; init.style.display = 'none';
+            } else {
+                img.style.display = 'none';
+                init.textContent = profile?.avatar_emoji || (username || 'P')[0].toUpperCase();
+                init.style.display = 'flex';
+            }
+        }
+
+        // Puzzle XP bar on own profile
+        function renderPuzzleXP(profile) {
+            const localProgress = JSON.parse(localStorage.getItem('sudoku_technique_progress') || '{}');
+            const localXP = Object.values(localProgress).reduce((s, p) => s + (p.xp || 0), 0);
+            const xp = Math.max(localXP, profile?.puzzle_xp || 0);
+            const RANKS = [
+                { name: 'Beginner',     emoji: '🌱', min: 0,   next: 25  },
+                { name: 'Intermediate', emoji: '📈', min: 25,  next: 70  },
+                { name: 'Advanced',     emoji: '🔥', min: 70,  next: 150 },
+                { name: 'Expert',       emoji: '⭐', min: 150, next: 300 },
+                { name: 'Grandmaster',  emoji: '🏆', min: 300, next: 300 },
+            ];
+            const rank = RANKS.slice().reverse().find(r => xp >= r.min) || RANKS[0];
+            const pct  = rank.name === 'Grandmaster' ? 100
+                       : Math.min(100, Math.round(((xp - rank.min) / (rank.next - rank.min)) * 100));
+            const rankEl = document.getElementById('prof-puzzle-rank');
+            const barEl  = document.getElementById('prof-puzzle-bar');
+            const xpEl   = document.getElementById('prof-puzzle-xp');
+            if (rankEl) rankEl.textContent = rank.emoji + ' ' + rank.name;
+            if (barEl)  barEl.style.width  = pct + '%';
+            if (xpEl)   xpEl.textContent   = xp;
         }
 
         function updateToggle(id, active) {
@@ -396,52 +466,30 @@
         function generateSudoku(difficulty, timeLimit) {
             const solution = generateCompleteSolution();
             const puzzle   = solution.map(r => [...r]);
-
-            // Clue targets (given cells remaining after removal)
-            const CLUE_RANGES = {
-                easy:   [36, 40],
-                medium: [28, 33],
-                hard:   [22, 27],
-            };
-
-            // Shorter TC → more clues (easier within band)
-            // Longer  TC → fewer clues (harder within band)
+            const CLUE_RANGES = { easy:[36,40], medium:[28,33], hard:[22,27] };
             function tcShift(tl) {
                 if (!tl || tl === Infinity) return 0;
-                if (tl <= 120)  return +4;
-                if (tl <= 300)  return +2;
-                if (tl <= 600)  return  0;
-                if (tl <= 900)  return -2;
-                if (tl <= 1200) return -3;
-                return                 -4;
+                if (tl <= 120) return +4; if (tl <= 300) return +2;
+                if (tl <= 600) return  0; if (tl <= 900) return -2;
+                if (tl <= 1200) return -3; return -4;
             }
-
-            const band  = CLUE_RANGES[difficulty] || CLUE_RANGES.medium;
+            const band = CLUE_RANGES[difficulty] || CLUE_RANGES.medium;
             const shift = tcShift(timeLimit);
             const targetGivens = Math.max(17, Math.min(
                 band[1] + shift,
                 Math.floor(Math.random() * (band[1] - band[0] + 1)) + band[0] + shift
             ));
-
-            // Dig holes with uniqueness check
             const positions = [];
-            for (let r = 0; r < 9; r++)
-                for (let c = 0; c < 9; c++)
-                    positions.push([r, c]);
+            for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) positions.push([r, c]);
             shuffle(positions);
-
             let givens = 81;
             for (const [r, c] of positions) {
                 if (givens <= targetGivens) break;
                 const backup = puzzle[r][c];
                 puzzle[r][c] = 0;
-                if (countSolutions(puzzle, 2) === 1) {
-                    givens--;
-                } else {
-                    puzzle[r][c] = backup;
-                }
+                if (countSolutions(puzzle, 2) === 1) { givens--; }
+                else { puzzle[r][c] = backup; }
             }
-
             return { puzzle, solution };
         }
 
@@ -481,36 +529,26 @@
             for (let c = 0; c < 9; c++) if (grid[row][c]) mask |= 1 << grid[row][c];
             for (let r = 0; r < 9; r++) if (grid[r][col]) mask |= 1 << grid[r][col];
             const br = Math.floor(row/3)*3, bc = Math.floor(col/3)*3;
-            for (let r = br; r < br+3; r++)
-                for (let c = bc; c < bc+3; c++)
-                    if (grid[r][c]) mask |= 1 << grid[r][c];
-            let count = 0;
-            for (let n = 1; n <= 9; n++) if (!(mask & (1<<n))) count++;
-            return count;
+            for (let r = br; r < br+3; r++) for (let c = bc; c < bc+3; c++) if (grid[r][c]) mask |= 1 << grid[r][c];
+            let count = 0; for (let n = 1; n <= 9; n++) if (!(mask & (1<<n))) count++; return count;
         }
 
         function generateCompleteSolution() {
             const grid = Array(9).fill(null).map(() => Array(9).fill(0));
             for (let box = 0; box < 9; box += 3) fillBox(grid, box, box);
-            solveSudoku(grid);
-            return grid;
+            solveSudoku(grid); return grid;
         }
 
         function fillBox(grid, row, col) {
-            const nums = [1,2,3,4,5,6,7,8,9];
-            shuffle(nums);
+            const nums = [1,2,3,4,5,6,7,8,9]; shuffle(nums);
             let idx = 0;
-            for (let r = 0; r < 3; r++)
-                for (let c = 0; c < 3; c++)
-                    grid[row+r][col+c] = nums[idx++];
+            for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) grid[row+r][col+c] = nums[idx++];
         }
 
         function solveSudoku(grid) {
-            const empty = findEmptyCell(grid);
-            if (!empty) return true;
+            const empty = findEmptyCell(grid); if (!empty) return true;
             const [row, col] = empty;
-            const nums = [1,2,3,4,5,6,7,8,9];
-            shuffle(nums);
+            const nums = [1,2,3,4,5,6,7,8,9]; shuffle(nums);
             for (const num of nums) {
                 if (isValidPlacement(grid, row, col, num)) {
                     grid[row][col] = num;
@@ -522,9 +560,7 @@
         }
 
         function findEmptyCell(grid) {
-            for (let r = 0; r < 9; r++)
-                for (let c = 0; c < 9; c++)
-                    if (grid[r][c] === 0) return [r, c];
+            for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) if (grid[r][c] === 0) return [r, c];
             return null;
         }
 
@@ -532,9 +568,7 @@
             for (let c = 0; c < 9; c++) if (grid[row][c] === num) return false;
             for (let r = 0; r < 9; r++) if (grid[r][col] === num) return false;
             const br = Math.floor(row/3)*3, bc = Math.floor(col/3)*3;
-            for (let r = br; r < br+3; r++)
-                for (let c = bc; c < bc+3; c++)
-                    if (grid[r][c] === num) return false;
+            for (let r = br; r < br+3; r++) for (let c = bc; c < bc+3; c++) if (grid[r][c] === num) return false;
             return true;
         }
 
@@ -2382,11 +2416,12 @@
         // REAL-TIME STATS — online players (Presence) + active games
         // ============================================================
         let _presenceChannel = null;
+        let _onlineUserIds = new Set(); // IDs of users currently online
 
         function startRealtimeStats() {
             if (!supabaseClient) return;
 
-            // 1. Presence channel — each tab joins, we count members
+            // 1. Presence channel — each tab joins, we count members + track online user IDs
             if (_presenceChannel) supabaseClient.removeChannel(_presenceChannel);
             _presenceChannel = supabaseClient.channel('lobby-presence', {
                 config: { presence: { key: 'player' } }
@@ -2397,13 +2432,33 @@
                     const state = _presenceChannel.presenceState();
                     const count = Object.keys(state).length;
                     document.getElementById('online-players').textContent = count.toLocaleString();
+                    // Rebuild online user ID set
+                    _onlineUserIds = new Set();
+                    Object.values(state).forEach(presences => {
+                        presences.forEach(p => { if (p.user_id) _onlineUserIds.add(p.user_id); });
+                    });
                 })
                 .subscribe(async (status) => {
                     if (status === 'SUBSCRIBED') {
+                        const uid = currentUser?.id || 'guest-' + Math.random().toString(36).slice(2);
                         await _presenceChannel.track({
-                            user_id: currentUser?.id || 'guest-' + Math.random().toString(36).slice(2),
+                            user_id: uid,
                             online_at: new Date().toISOString()
                         });
+                        // Write last_seen to profile so friends can see it when offline
+                        if (currentUser && supabaseClient) {
+                            supabaseClient.from('profiles')
+                                .update({ last_seen: new Date().toISOString() })
+                                .eq('id', currentUser.id)
+                                .then(() => {});
+                            // Keep refreshing every 2 min while app is open
+                            setInterval(() => {
+                                supabaseClient.from('profiles')
+                                    .update({ last_seen: new Date().toISOString() })
+                                    .eq('id', currentUser.id)
+                                    .then(() => {});
+                            }, 2 * 60 * 1000);
+                        }
                     }
                 });
 
@@ -2533,6 +2588,13 @@
 
             document.getElementById('td-join-btn').addEventListener('click', joinCurrentTournament);
             document.getElementById('td-launch-btn').addEventListener('click', launchTournament);
+            document.getElementById('td-leave-btn').addEventListener('click', leaveCurrentTournament);
+            document.getElementById('td-delete-btn').addEventListener('click', deleteCurrentTournament);
+
+            // Leaderboard TC tabs
+            document.querySelectorAll('.friends-tab[data-lb]').forEach(tab => {
+                tab.addEventListener('click', () => loadLeaderboard(tab.dataset.lb));
+            });
 
             // Deep link
             const params = new URLSearchParams(window.location.search);
@@ -2732,6 +2794,10 @@
                 (t.status === 'waiting' && !isParticipant && currentUser) ? 'block' : 'none';
             document.getElementById('td-launch-btn').style.display =
                 (t.status === 'waiting' && isCreator && t.player_count >= (t.min_players || 2)) ? 'block' : 'none';
+            document.getElementById('td-leave-btn').style.display =
+                (t.status === 'waiting' && isParticipant && !isCreator) ? 'block' : 'none';
+            document.getElementById('td-delete-btn').style.display =
+                (t.status === 'waiting' && isCreator) ? 'block' : 'none';
 
             document.getElementById('tournament-detail-modal').classList.add('active');
 
@@ -2864,6 +2930,45 @@
 
             showToast('🚀 Tournament launched! Matches created.', 3000);
             openTournamentDetail(_currentTournamentId);
+        }
+
+        async function leaveCurrentTournament() {
+            if (!_currentTournamentId || !currentUser) return;
+            if (!confirm('Leave this tournament?')) return;
+            const { error } = await supabaseClient
+                .from('tournament_participants')
+                .delete()
+                .eq('tournament_id', _currentTournamentId)
+                .eq('player_id', currentUser.id);
+            if (error) { showToast('Error: ' + error.message, 3000); return; }
+            // Decrement player_count
+            await supabaseClient.rpc('decrement_tournament_players', { tid: _currentTournamentId })
+                .catch(() => {}); // RPC may not exist — soft fail
+            showToast('You left the tournament.', 2500);
+            document.getElementById('tournament-detail-modal').classList.remove('active');
+            clearInterval(_tournamentDetailInterval);
+            loadTournamentsPage();
+        }
+
+        async function deleteCurrentTournament() {
+            if (!_currentTournamentId || !currentUser) return;
+            if (!confirm('Delete this tournament? This cannot be undone.')) return;
+            const btn = document.getElementById('td-delete-btn');
+            btn.textContent = 'Deleting…'; btn.disabled = true;
+            try {
+                // Delete child records first (FK constraints)
+                await supabaseClient.from('tournament_matches').delete().eq('tournament_id', _currentTournamentId);
+                await supabaseClient.from('tournament_participants').delete().eq('tournament_id', _currentTournamentId);
+                await supabaseClient.from('tournaments').delete().eq('id', _currentTournamentId);
+                showToast('Tournament deleted.', 2500);
+                document.getElementById('tournament-detail-modal').classList.remove('active');
+                clearInterval(_tournamentDetailInterval);
+                loadTournamentsPage();
+            } catch(e) {
+                showToast('Delete failed: ' + e.message, 3000);
+            } finally {
+                btn.textContent = '🗑 Delete Tournament'; btn.disabled = false;
+            }
         }
 
         async function createTournament() {
@@ -4042,30 +4147,64 @@
         // ============================================
         async function saveGameToCloud(result, myScore, oppScore, oppName) {
             if (!supabaseClient || !currentUser) return;
-            const ratingBefore = currentProfile?.rating || playerData.rating;
-            const ratingAfter = playerData.rating;
+
+            // Determine which TC column this game belongs to
+            const tl = gameState.timeLimit;
+            const tcCol = (!tl || tl === Infinity) ? null
+                        : tl <= 120  ? 'bullet_rating'
+                        : tl <= 300  ? 'blitz_rating'
+                        : tl <= 600  ? 'rapid_rating'
+                        : tl <= 900  ? 'rapid_rating'
+                        :              'classical_rating';
+
+            const ratingBefore = tcCol ? (currentProfile?.[tcCol] ?? 2.0) : 2.0;
+            // playerData.rating holds the new computed rating from recordGame()
+            const ratingAfter  = playerData.rating;
+
             try {
                 await supabaseClient.from('game_history').insert({
-                    player_id: currentUser.id,
+                    player_id:    currentUser.id,
                     opponent_name: oppName,
                     result,
-                    my_score: myScore,
-                    opp_score: oppScore,
-                    game_mode: gameState.gameMode,
+                    my_score:     myScore,
+                    opp_score:    oppScore,
+                    game_mode:    gameState.gameMode,
                     time_control: gameState.timeLimit,
                     rating_before: ratingBefore,
-                    rating_after: ratingAfter,
+                    rating_after:  ratingAfter,
                 });
-                // Update profile stats
-                await supabaseClient.from('profiles').update({
-                    rating: ratingAfter,
+
+                // Build update — only touch the TC column that was actually played
+                const update = {
                     games_played: (currentProfile?.games_played || 0) + 1,
-                    wins:   (currentProfile?.wins   || 0) + (result === 'win'  ? 1 : 0),
-                    losses: (currentProfile?.losses || 0) + (result === 'loss' ? 1 : 0),
-                    draws:  (currentProfile?.draws  || 0) + (result === 'draw' ? 1 : 0),
-                    best_streak: Math.max(currentProfile?.best_streak || 0, playerData.stats?.currentStreak || 0),
-                    updated_at: new Date().toISOString(),
-                }).eq('id', currentUser.id);
+                    wins:         (currentProfile?.wins   || 0) + (result === 'win'  ? 1 : 0),
+                    losses:       (currentProfile?.losses || 0) + (result === 'loss' ? 1 : 0),
+                    draws:        (currentProfile?.draws  || 0) + (result === 'draw' ? 1 : 0),
+                    best_streak:  Math.max(currentProfile?.best_streak || 0, playerData.stats?.currentStreak || 0),
+                    updated_at:   new Date().toISOString(),
+                };
+                // Also keep overall `rating` as the highest TC rating for backward compat
+                if (tcCol) {
+                    update[tcCol] = ratingAfter;
+                    // overall rating = max of all TC ratings after update
+                    const allTc = ['bullet_rating','blitz_rating','rapid_rating','classical_rating'];
+                    const maxRating = Math.max(ratingAfter, ...allTc
+                        .filter(c => c !== tcCol)
+                        .map(c => currentProfile?.[c] ?? 2.0));
+                    update.rating = maxRating;
+                }
+
+                // Sync puzzle XP from localStorage
+                const localProgress = JSON.parse(localStorage.getItem('sudoku_technique_progress') || '{}');
+                const localXP = Object.values(localProgress).reduce((s, p) => s + (p.xp || 0), 0);
+                const puzzleXP = Math.max(localXP, currentProfile?.puzzle_xp || 0);
+                update.puzzle_xp   = puzzleXP;
+                update.puzzle_rank = puzzleXP >= 300 ? 'Grandmaster'
+                                   : puzzleXP >= 150 ? 'Expert'
+                                   : puzzleXP >= 70  ? 'Advanced'
+                                   : puzzleXP >= 25  ? 'Intermediate' : 'Beginner';
+
+                await supabaseClient.from('profiles').update(update).eq('id', currentUser.id);
                 await loadProfile(currentUser.id);
             } catch(e) { console.warn('Cloud save failed:', e); }
         }
@@ -4107,30 +4246,52 @@
         // ============================================
         // LEADERBOARD (Real players)
         // ============================================
-        async function loadLeaderboard() {
+        async function loadLeaderboard(tc) {
             if (!supabaseClient) return;
-            const { data } = await supabaseClient
-                .from('profiles')
-                .select('username, rating, wins, games_played, avatar_emoji')
-                .order('rating', { ascending: false })
-                .limit(50);
-            if (!data) return;
+            tc = tc || _activeLbTab || 'bullet';
+            _activeLbTab = tc;
+
+            const tcCol = tc === 'blitz' ? 'blitz_rating' : tc === 'rapid' ? 'rapid_rating'
+                        : tc === 'classical' ? 'classical_rating' : 'bullet_rating';
+            const tcLabel = { bullet:'Bullet', blitz:'Blitz', rapid:'Rapid', classical:'Classical' }[tc];
+
+            // Update tab active state
+            document.querySelectorAll('.friends-tab[data-lb]').forEach(t => {
+                t.classList.toggle('active', t.dataset.lb === tc);
+            });
+
             const list = document.getElementById('leaderboard-list');
             if (!list) return;
+            list.innerHTML = '<div class="empty-state" style="color:#555;">Loading…</div>';
+
+            const { data } = await supabaseClient
+                .from('profiles')
+                .select(`id, username, avatar_url, avatar_emoji, games_played, wins, ${tcCol}`)
+                .order(tcCol, { ascending: false })
+                .limit(50);
+
+            if (!data || data.length === 0) {
+                list.innerHTML = '<div class="empty-state">No ' + tcLabel + ' games played yet.</div>';
+                return;
+            }
+
             list.innerHTML = '';
             data.forEach((p, i) => {
-                const isMe = currentProfile && p.username === currentProfile.username;
+                const isMe = currentProfile && p.id === currentProfile.id;
                 const el = document.createElement('div');
                 el.className = 'leaderboard-item' + (isMe ? ' leaderboard-me' : '');
                 const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}`;
+                const avHtml = p.avatar_url
+                    ? `<img src="${p.avatar_url}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;" loading="lazy">`
+                    : (p.avatar_emoji || p.username[0].toUpperCase());
                 el.innerHTML = `
                     <div class="lb-rank">${medal}</div>
-                    <div class="lb-avatar">${p.avatar_emoji || p.username[0].toUpperCase()}</div>
+                    <div class="lb-avatar">${avHtml}</div>
                     <div class="lb-info">
                         <div class="lb-name">${p.username}${isMe ? ' (you)' : ''}</div>
-                        <div class="lb-games">${p.wins}W · ${p.games_played} games</div>
+                        <div class="lb-games">${p.wins || 0}W · ${p.games_played || 0} games</div>
                     </div>
-                    <div class="lb-rating">${p.rating.toFixed(1)}</div>`;
+                    <div class="lb-rating">${(p[tcCol] || 2.0).toFixed(1)}</div>`;
                 list.appendChild(el);
             });
         }
@@ -4149,8 +4310,8 @@
                 .from('friendships')
                 .select(`
                     id, status, requester_id, addressee_id,
-                    requester:profiles!friendships_requester_id_fkey(id, username, rating, avatar_emoji),
-                    addressee:profiles!friendships_addressee_id_fkey(id, username, rating, avatar_emoji)
+                    requester:profiles!friendships_requester_id_fkey(id, username, rating, avatar_emoji, last_seen),
+                    addressee:profiles!friendships_addressee_id_fkey(id, username, rating, avatar_emoji, last_seen)
                 `)
                 .or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`);
             if (!data) return;
@@ -4164,7 +4325,6 @@
                 badge.textContent = pending.length;
                 badge.style.display = pending.length > 0 ? 'inline' : 'none';
             }
-            // Top-right header notification badge — real pending friend requests
             const notifBadge = document.getElementById('notif-badge');
             if (notifBadge) {
                 notifBadge.textContent = pending.length;
@@ -4173,6 +4333,46 @@
 
             renderFriendsList(accepted);
             renderPendingList(pending);
+        }
+
+        function formatLastSeen(lastSeen) {
+            if (!lastSeen) return 'Never seen';
+            const diff = Date.now() - new Date(lastSeen).getTime();
+            const mins = Math.floor(diff / 60000);
+            const hrs  = Math.floor(diff / 3600000);
+            const days = Math.floor(diff / 86400000);
+            if (mins < 2)   return 'Just now';
+            if (mins < 60)  return mins + 'm ago';
+            if (hrs  < 24)  return hrs  + 'h ago';
+            if (days < 7)   return days + 'd ago';
+            return new Date(lastSeen).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+
+        function makeFriendCard(profile, actions) {
+            const isOnline = _onlineUserIds.has(profile.id);
+            const el = document.createElement('div');
+            el.className = 'friend-card';
+            el.innerHTML = `
+                <div class="friend-avatar-wrap">
+                    <div class="friend-avatar">${profile.avatar_emoji || profile.username[0].toUpperCase()}</div>
+                    ${isOnline ? '<span class="online-dot"></span>' : ''}
+                </div>
+                <div class="friend-info">
+                    <div class="friend-name">${profile.username}</div>
+                    <div class="friend-status ${isOnline ? 'online' : ''}">
+                        ${isOnline ? '● Online' : '○ ' + formatLastSeen(profile.last_seen)}
+                    </div>
+                </div>
+                <div class="friend-actions"></div>`;
+            const actionsEl = el.querySelector('.friend-actions');
+            actions.forEach(a => {
+                const btn = document.createElement('button');
+                btn.className = 'friend-btn ' + a.cls;
+                btn.textContent = a.label;
+                btn.addEventListener('click', a.action);
+                actionsEl.appendChild(btn);
+            });
+            return el;
         }
 
         function renderFriendsList(friends) {
@@ -4214,27 +4414,6 @@
                 ]);
                 list.appendChild(el);
             });
-        }
-
-        function makeFriendCard(profile, actions) {
-            const el = document.createElement('div');
-            el.className = 'friend-card';
-            el.innerHTML = `
-                <div class="friend-avatar">${profile.avatar_emoji || profile.username[0].toUpperCase()}</div>
-                <div class="friend-info">
-                    <div class="friend-name">${profile.username}</div>
-                    <div class="friend-rating">Rating: ${profile.rating?.toFixed(1) || '2.0'}</div>
-                </div>
-                <div class="friend-actions"></div>`;
-            const actionsEl = el.querySelector('.friend-actions');
-            actions.forEach(a => {
-                const btn = document.createElement('button');
-                btn.className = 'friend-btn ' + a.cls;
-                btn.textContent = a.label;
-                btn.addEventListener('click', a.action);
-                actionsEl.appendChild(btn);
-            });
-            return el;
         }
 
         async function searchFriend() {

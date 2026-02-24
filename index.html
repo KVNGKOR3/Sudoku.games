@@ -281,21 +281,17 @@ create policy "public rw" on sudoku_rooms
 
             <!-- Action Buttons -->
             <button class="action-btn btn-primary" id="start-game-btn">Create a Game (Local)</button>
-            <button class="action-btn btn-secondary" id="solo-sudoku-btn">🧩 Solo Sudoku</button>
+            <button class="action-btn btn-secondary" id="quick-match-btn">Quick Match vs AI (10+0)</button>
 
             <!-- Stats -->
             <div class="stats-bar">
                 <div class="stat-item">
-                    <div class="stat-value" id="online-players">12,847</div>
-                    <div class="stat-label">Players</div>
+                    <div class="stat-value" id="online-players">…</div>
+                    <div class="stat-label">Online</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value" id="active-games">3,294</div>
-                    <div class="stat-label">Games</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-value" id="user-rating">2.0</div>
-                    <div class="stat-label">Your Rating</div>
+                    <div class="stat-value" id="active-games">…</div>
+                    <div class="stat-label">Active Games</div>
                 </div>
             </div>
 
@@ -400,39 +396,43 @@ create policy "public rw" on sudoku_rooms
          PROFILE PAGE
          ============================================ -->
     <div class="profile-page" id="profile-page">
-        <!-- Header -->
         <header class="header">
             <div class="header-left">
                 <button class="menu-btn" id="profile-menu-btn">
-                    <span></span>
-                    <span></span>
-                    <span></span>
+                    <span></span><span></span><span></span>
                 </button>
                 <span class="logo">Profile</span>
             </div>
         </header>
-
         <div class="main-content">
-            <div class="page-header">
-                <div class="page-title" id="profile-username">Player</div>
-                <div class="page-subtitle">Member since today</div>
+
+            <!-- Avatar hero -->
+            <div class="prof-hero">
+                <div class="prof-avatar-wrap">
+                    <img id="prof-avatar-img" class="prof-avatar-img" src="" alt="" style="display:none;">
+                    <div id="prof-avatar-init" class="prof-avatar-init">P</div>
+                    <label class="prof-avatar-edit-btn" id="prof-avatar-edit-lbl" title="Change photo" style="display:none;">
+                        📷<input type="file" id="prof-avatar-file" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none;">
+                    </label>
+                </div>
+                <div class="prof-hero-text">
+                    <div class="prof-hero-name" id="profile-username">Player</div>
+                    <div class="prof-hero-since" id="profile-since">—</div>
+                </div>
             </div>
 
+            <!-- Stats grid -->
             <div class="profile-stats">
                 <div class="profile-stat-card">
-                    <div class="profile-stat-value" id="profile-rating">2.0</div>
-                    <div class="profile-stat-label">Rating</div>
-                </div>
-                <div class="profile-stat-card">
                     <div class="profile-stat-value" id="profile-games">0</div>
-                    <div class="profile-stat-label">Games Played</div>
+                    <div class="profile-stat-label">Games</div>
                 </div>
                 <div class="profile-stat-card">
-                    <div class="profile-stat-value" id="profile-wins">0</div>
+                    <div class="profile-stat-value" id="profile-wins" style="color:#56d364;">0</div>
                     <div class="profile-stat-label">Wins</div>
                 </div>
                 <div class="profile-stat-card">
-                    <div class="profile-stat-value" id="profile-losses">0</div>
+                    <div class="profile-stat-value" id="profile-losses" style="color:#f05a5a;">0</div>
                     <div class="profile-stat-label">Losses</div>
                 </div>
                 <div class="profile-stat-card">
@@ -449,11 +449,43 @@ create policy "public rw" on sudoku_rooms
                 </div>
                 <div class="profile-stat-card">
                     <div class="profile-stat-value" id="profile-best-streak">0</div>
-                    <div class="profile-stat-label">Best Daily</div>
+                    <div class="profile-stat-label">Best Streak</div>
                 </div>
             </div>
 
-            <div class="section-label">Achievements</div>
+            <!-- TC ratings — clean, no icons or descriptions -->
+            <div class="section-label" style="margin-top:14px;">Ratings</div>
+            <div class="tc-rating-grid">
+                <div class="tc-rating-card">
+                    <div class="tc-rating-name">Bullet</div>
+                    <div class="tc-rating-val" id="tc-bullet">—</div>
+                </div>
+                <div class="tc-rating-card">
+                    <div class="tc-rating-name">Blitz</div>
+                    <div class="tc-rating-val" id="tc-blitz">—</div>
+                </div>
+                <div class="tc-rating-card">
+                    <div class="tc-rating-name">Rapid</div>
+                    <div class="tc-rating-val" id="tc-rapid">—</div>
+                </div>
+                <div class="tc-rating-card">
+                    <div class="tc-rating-name">Classical</div>
+                    <div class="tc-rating-val" id="tc-classical">—</div>
+                </div>
+            </div>
+
+            <!-- Puzzle XP -->
+            <div class="section-label" style="margin-top:14px;">Technique Dojo</div>
+            <div class="puzzle-xp-row">
+                <div class="puzzle-xp-rank" id="prof-puzzle-rank">🌱 Beginner</div>
+                <div class="puzzle-xp-bar-wrap">
+                    <div class="puzzle-xp-bar" id="prof-puzzle-bar" style="width:0%"></div>
+                </div>
+                <div class="puzzle-xp-num"><span id="prof-puzzle-xp">0</span> XP</div>
+            </div>
+
+            <!-- Achievements -->
+            <div class="section-label" style="margin-top:14px;">Achievements</div>
             <div class="profile-badges">
                 <div class="badge-card locked" id="badge-first-win">
                     <div class="badge-icon">🏆</div>
@@ -540,14 +572,15 @@ create policy "public rw" on sudoku_rooms
             </div>
         </header>
 
-        <div class="main-content">
-            <div class="page-header">
-                <div class="page-title">Global Leaderboard</div>
-                <div class="page-subtitle">Top players worldwide</div>
+        <div class="main-content" style="padding-top:0;">
+            <div class="friends-tabs" style="margin-bottom:0;">
+                <button class="friends-tab active" data-lb="bullet">⚡ Bullet</button>
+                <button class="friends-tab" data-lb="blitz">🔥 Blitz</button>
+                <button class="friends-tab" data-lb="rapid">⏱ Rapid</button>
+                <button class="friends-tab" data-lb="classical">♟ Classical</button>
             </div>
-
-            <div class="leaderboard-list" id="leaderboard-list">
-                <!-- Leaderboard will be populated by JavaScript -->
+            <div class="leaderboard-list" id="leaderboard-list" style="padding-top:10px;">
+                <!-- Leaderboard populated by JS -->
             </div>
         </div>
     </div>
@@ -1119,6 +1152,8 @@ create policy "public rw" on sudoku_rooms
 
                 <button class="action-btn btn-primary" id="td-join-btn">Join Tournament</button>
                 <button class="action-btn btn-primary" id="td-launch-btn" style="display:none;background:#2a7a2a;">🚀 Launch Tournament</button>
+                <button class="action-btn btn-secondary" id="td-leave-btn" style="display:none;">Leave Tournament</button>
+                <button class="action-btn btn-secondary" id="td-delete-btn" style="display:none;background:rgba(220,50,50,0.15);color:#f05a5a;border-color:#f05a5a;">🗑 Delete Tournament</button>
                 <button class="action-btn btn-secondary" id="td-close-btn">Close</button>
             </div>
         </div>
