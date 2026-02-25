@@ -3085,10 +3085,39 @@
             requestAnimationFrame(gameLoop);
         }
 
+        // Stores the original 9-button pad HTML so we can restore it exactly when
+        // returning from 16x16 mode. The 9x9 pad is never rebuilt programmatically.
+        let _originalNumberPadHTML = null;
+
         function rebuildNumberPad(N) {
             const pad = document.getElementById('permanent-number-pad');
             if (!pad) return;
+
+            if (N === 9) {
+                // Restore original static HTML exactly — no inline style changes
+                if (_originalNumberPadHTML !== null) {
+                    pad.innerHTML = _originalNumberPadHTML;
+                    pad.style.gridTemplateColumns = '';
+                }
+                // Re-attach click listeners (DOM was replaced, so old listeners are gone)
+                pad.querySelectorAll('.num-pad-btn[data-num]').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        if (gameState.gameMode === 'passplay' && gameState.currentPlayer !== 1 && gameState.inputMode !== 'pencil') return;
+                        const num = parseInt(btn.dataset.num);
+                        if (!btn.classList.contains('disabled')) handleNumberInput(num);
+                    });
+                });
+                return;
+            }
+
+            // First time entering 16x16: snapshot the original HTML
+            if (_originalNumberPadHTML === null) {
+                _originalNumberPadHTML = pad.innerHTML;
+            }
+
+            // Build 16-button pad (8 columns x 2 rows)
             pad.innerHTML = '';
+            pad.style.gridTemplateColumns = 'repeat(8, 1fr)';
             for (let i = 1; i <= N; i++) {
                 const btn = document.createElement('button');
                 btn.className = 'num-pad-btn';
@@ -3100,10 +3129,6 @@
                 });
                 pad.appendChild(btn);
             }
-            // Adjust grid columns for 16-pad
-            pad.style.gridTemplateColumns = N > 9
-                ? 'repeat(8, 1fr)'
-                : 'repeat(9, 1fr)';
         }
 
         function getValidNumbers(row, col) {

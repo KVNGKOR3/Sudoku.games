@@ -2590,8 +2590,3 @@ body.keyboard-open #sudoku-canvas {
     font-size: clamp(11px, 3.5vw, 18px);
     padding: 6px 2px;
 }
-
-/* ── Permanent number pad: also allow 8-col ───────────── */
-#permanent-number-pad {
-    grid-template-columns: repeat(9, 1fr);
-}
