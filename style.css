@@ -2565,3 +2565,33 @@ body.keyboard-open #sudoku-canvas {
     line-height: 1.4;
     padding: 0 2px;
 }
+
+
+/* ── Extreme difficulty button ─────────────────────────── */
+.difficulty-btn.extreme {
+    background: linear-gradient(135deg, #6a1b9a, #4a148c);
+    color: #f3e5f5;
+    border: 1px solid #9c27b0;
+}
+.difficulty-btn.extreme:hover { background: linear-gradient(135deg, #7b1fa2, #560c96); }
+
+/* ── 16×16 grid button ─────────────────────────────────── */
+.difficulty-btn.size16 {
+    background: linear-gradient(135deg, #0277bd, #01579b);
+    color: #e1f5fe;
+    border: 1px solid #0288d1;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+.difficulty-btn.size16:hover { background: linear-gradient(135deg, #0288d1, #0277bd); }
+
+/* ── Number pad 8-column layout for 16×16 ─────────────── */
+#permanent-number-pad[style*="repeat(8"] .num-pad-btn {
+    font-size: clamp(11px, 3.5vw, 18px);
+    padding: 6px 2px;
+}
+
+/* ── Permanent number pad: also allow 8-col ───────────── */
+#permanent-number-pad {
+    grid-template-columns: repeat(9, 1fr);
+}

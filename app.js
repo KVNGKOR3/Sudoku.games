@@ -66,6 +66,33 @@
                     dark: '#ff8533',
                     prefilled: '#cc6600',
                     name: 'Sunset'
+                },
+                // ─── Modern clean themes ──────────────────────────
+                clean: {
+                    light: '#ffffff',
+                    dark: '#f0f2f8',
+                    prefilled: '#e8eaf6',
+                    prefilledText: '#1a237e',
+                    playerText: '#1565c0',
+                    lineColor: '#bdc1d4',
+                    boldLineColor: '#37474f',
+                    outerBorderColor: '#212121',
+                    bgFill: '#ffffff',
+                    checkerboard: false,
+                    name: 'Clean'
+                },
+                night: {
+                    light: '#1e2139',
+                    dark: '#161830',
+                    prefilled: '#252844',
+                    prefilledText: '#e8eaf6',
+                    playerText: '#64b5f6',
+                    lineColor: '#2d3060',
+                    boldLineColor: '#5c6bc0',
+                    outerBorderColor: '#7986cb',
+                    bgFill: '#161830',
+                    checkerboard: false,
+                    name: 'Night'
                 }
             },
             
@@ -113,6 +140,8 @@
             pencilMarks: [],  // Track pencil marks for each cell
             
             variant: 'classic',  // 'classic' | 'diagonal' | 'windoku' | 'antiknight'
+            gridSize: 9,         // 9 for standard, 16 for 16x16
+            boxSize: 3,          // 3 for 9x9, 4 for 16x16
             timeLimit: 600,
             gameMode: 'simultaneous',
             vsAI: false,
@@ -483,7 +512,7 @@
             variant = variant || gameState.variant || 'classic';
             const solution = generateCompleteSolution(variant);
             const puzzle   = solution.map(r => [...r]);
-            const CLUE_RANGES = { easy:[36,40], medium:[28,33], hard:[22,27] };
+            const CLUE_RANGES = { easy:[36,40], medium:[28,33], hard:[22,27], extreme:[17,21] };
             function tcShift(tl) {
                 if (!tl || tl === Infinity) return 0;
                 if (tl <= 120) return +4; if (tl <= 300) return +2;
@@ -1188,16 +1217,15 @@
         }
 
         function updateRemainingCounts() {
-            for (let num = 1; num <= 9; num++) {
+            const _GN = gameState.gridSize || 9;
+            for (let num = 1; num <= _GN; num++) {
                 let count = 0;
-                for (let r = 0; r < 9; r++) {
-                    for (let c = 0; c < 9; c++) {
-                        if (gameState.puzzle[r][c] === num) {
-                            count++;
-                        }
+                for (let r = 0; r < _GN; r++) {
+                    for (let c = 0; c < _GN; c++) {
+                        if (gameState.puzzle[r][c] === num) count++;
                     }
                 }
-                const remaining = 9 - count;
+                const remaining = _GN - count;
                 const elem = document.getElementById(`remaining-${num}`);
                 if (elem) {
                     elem.textContent = remaining;
@@ -1223,15 +1251,15 @@
 
             if (!gameState.selectedCell) {
                 // If no cell selected, select first empty cell
-                for (let r = 0; r < 9; r++) {
-                    for (let c = 0; c < 9; c++) {
+                const _GS = gameState.gridSize || 9;
+                outer9: for (let r = 0; r < _GS; r++) {
+                    for (let c = 0; c < _GS; c++) {
                         if (gameState.claims[r][c] === 0) {
                             gameState.selectedCell = { row: r, col: c };
                             drawGrid();
-                            break;
+                            break outer9;
                         }
                     }
-                    if (gameState.selectedCell) break;
                 }
             }
 
@@ -1398,11 +1426,16 @@
             // Difficulty selection (for puzzles)
             document.querySelectorAll('.difficulty-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    gameState.difficulty = btn.dataset.diff;
-                    gameState.vsAI = false;
-                    gameState.gameMode = 'solo';
                     document.getElementById('difficulty-modal').classList.remove('active');
-                    startGame();
+                    if (btn.dataset.size === '16') {
+                        // 16×16 mode
+                        startGame16(btn.dataset.diff || 'medium');
+                    } else {
+                        gameState.difficulty = btn.dataset.diff;
+                        gameState.vsAI   = false;
+                        gameState.gameMode = 'solo';
+                        startGame();
+                    }
                 });
             });
 
@@ -1469,11 +1502,11 @@
         // GAME LIFECYCLE
         // ============================================
         function startGame() {
+            // Ensure we're in standard 9×9 mode (in case the user was in 16×16 before)
+            gameState.gridSize = 9;
+            gameState.boxSize  = 3;
+            rebuildNumberPad(9);
             // Generate a fresh puzzle each time, scaled to time control.
-            // NOTE: generateSudoku calls generateCompleteSolution which — for jigsaw —
-            // sets variantData.regions internally during generation.  We MUST capture
-            // those regions and reuse them; generating new regions afterward would make
-            // the puzzle incompatible with the displayed region layout.
             const puzzleData = generateSudoku(gameState.difficulty, gameState.timeLimit);
             gameState.puzzle = puzzleData.puzzle.map(row => [...row]);
             gameState.solution = puzzleData.solution.map(row => [...row]);
@@ -1909,20 +1942,23 @@
         // GRID RENDERING (Chess-style)
         // ============================================
         function drawGrid() {
+            const N  = gameState.gridSize || 9;
+            const BS = gameState.boxSize  || 3;
             const size = canvas.width / window.devicePixelRatio;
-            const cellSize = size / 9;
+            const cellSize = size / N;
             const now = Date.now();
             
             // Get current theme
             const currentTheme = CONFIG.THEMES[playerData.settings.boardTheme] || CONFIG.THEMES.classic;
+            const useCheckerboard = currentTheme.checkerboard !== false;
             
-            // Clear
-            ctx.fillStyle = currentTheme.dark;
+            // Clear canvas with theme background
+            ctx.fillStyle = currentTheme.bgFill || currentTheme.dark;
             ctx.fillRect(0, 0, size, size);
             
             // Draw cells
-            for (let row = 0; row < 9; row++) {
-                for (let col = 0; col < 9; col++) {
+            for (let row = 0; row < N; row++) {
+                for (let col = 0; col < N; col++) {
                     const x = col * cellSize;
                     const y = row * cellSize;
                     const claim = gameState.claims[row][col];
@@ -1941,7 +1977,7 @@
                         const sr = gameState.selectedCell.row;
                         const sc = gameState.selectedCell.col;
                         isHighlightZone = (row === sr || col === sc ||
-                            (Math.floor(row/3) === Math.floor(sr/3) && Math.floor(col/3) === Math.floor(sc/3)));
+                            (Math.floor(row/BS) === Math.floor(sr/BS) && Math.floor(col/BS) === Math.floor(sc/BS)));
                     }
                     // Highlight cells with same number as highlightNumber
                     if (gameState.highlightNumber && gameState.puzzle[row][col] === gameState.highlightNumber) {
@@ -1953,19 +1989,26 @@
                                        gameState.errorCell.row === row &&
                                        gameState.errorCell.col === col;
                     
-                    // Checkerboard pattern
-                    const isLight = (Math.floor(row / 3) + Math.floor(col / 3)) % 2 === 0;
-                    let bgColor = isLight ? currentTheme.light : currentTheme.dark;
+                    // Cell base colour
+                    let bgColor;
+                    if (useCheckerboard) {
+                        const isLight = (Math.floor(row / BS) + Math.floor(col / BS)) % 2 === 0;
+                        bgColor = isLight ? currentTheme.light : currentTheme.dark;
+                    } else {
+                        bgColor = currentTheme.light;
+                    }
                     
                     // Apply claim tint
                     if (claim === -1) {
                         bgColor = currentTheme.prefilled;
                     } else if (claim === 1) {
-                        bgColor = isLight ? 
-                            'rgba(74, 158, 255, 0.4)' : 'rgba(74, 158, 255, 0.5)';
+                        bgColor = useCheckerboard
+                            ? 'rgba(74,158,255,0.45)'
+                            : (currentTheme === CONFIG.THEMES.night ? 'rgba(74,158,255,0.2)' : 'rgba(74,158,255,0.18)');
                     } else if (claim === 2) {
-                        bgColor = isLight ? 
-                            'rgba(255, 140, 74, 0.4)' : 'rgba(255, 140, 74, 0.5)';
+                        bgColor = useCheckerboard
+                            ? 'rgba(255,140,74,0.45)'
+                            : (currentTheme === CONFIG.THEMES.night ? 'rgba(255,140,74,0.2)' : 'rgba(255,140,74,0.18)');
                     }
                     
                     // Animation
@@ -2001,7 +2044,12 @@
 
                     // Row/col/box highlight zone (subtle tint)
                     if (isHighlightZone && !isSelected && claim === 0) {
-                        ctx.fillStyle = 'rgba(255,255,255,0.10)';
+                        const zoneTint = useCheckerboard
+                            ? 'rgba(255,255,255,0.10)'
+                            : (currentTheme.checkerboard === false && currentTheme.light === '#ffffff'
+                                ? 'rgba(199,218,255,0.45)'   // clean: soft blue
+                                : 'rgba(100,130,255,0.15)'); // night: subtle
+                        ctx.fillStyle = zoneTint;
                         ctx.fillRect(x, y, cellSize, cellSize);
                     }
 
@@ -2021,7 +2069,11 @@
                     
                     // Selection highlight
                     if (isSelected) {
-                        ctx.fillStyle = CONFIG.COLOR_SELECTED;
+                        ctx.fillStyle = useCheckerboard
+                            ? CONFIG.COLOR_SELECTED
+                            : (currentTheme.light === '#ffffff'
+                                ? 'rgba(66,133,244,0.55)'   // clean: Google-blue
+                                : 'rgba(92,107,192,0.70)'); // night: indigo
                         ctx.fillRect(x, y, cellSize, cellSize);
                     }
                     
@@ -2054,18 +2106,25 @@
                     
                     // Draw number or pencil marks
                     if (value !== 0) {
-                        ctx.font = `bold ${cellSize * 0.65}px -apple-system, sans-serif`;
+                        // Smaller font for 16×16 mode or 2-digit values
+                        const fontSize = N > 9
+                            ? (value > 9 ? cellSize * 0.42 : cellSize * 0.52)
+                            : cellSize * 0.62;
+                        ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
                         
+                        // Given-cell text colour can be overridden by theme
+                        const givenCol  = currentTheme.prefilledText || '#1a1a1a';
+                        const p1Col     = currentTheme.playerText    || '#003d80';
                         if (claim === -1) {
-                            ctx.fillStyle = '#1a1a1a';
+                            ctx.fillStyle = givenCol;
                         } else if (claim === 1) {
-                            ctx.fillStyle = '#003d80';
+                            ctx.fillStyle = isSelected ? '#ffffff' : p1Col;
                         } else if (claim === 2) {
-                            ctx.fillStyle = '#8b4513';
+                            ctx.fillStyle = isSelected ? '#ffffff' : (currentTheme.playerText ? '#e57373' : '#8b4513');
                         } else {
-                            ctx.fillStyle = '#1a1a1a';
+                            ctx.fillStyle = givenCol;
                         }
                         
                         const centerX = x + cellSize / 2;
@@ -2100,48 +2159,43 @@
                 }
             }
             
-            // Grid lines - calculate color based on theme
-            const gridLineColor = currentTheme.dark === '#1a1a1a' ? '#444' : // Neon theme
-                                 currentTheme.dark === '#4682b4' ? '#2c5282' : // Ocean theme
-                                 currentTheme.dark === '#ff8533' ? '#cc6600' : // Sunset theme
-                                 '#5d4037'; // Default brown
+            // ── Grid Lines ──────────────────────────────────────────
+            // Thin cell dividers
+            const gridLineColor = currentTheme.lineColor
+                || (currentTheme.dark === '#1a1a1a' ? '#444'
+                    : currentTheme.dark === '#4682b4' ? '#2c5282'
+                    : currentTheme.dark === '#ff8533' ? '#cc6600'
+                    : '#5d4037');
             ctx.strokeStyle = gridLineColor;
-            ctx.lineWidth = 1;
-            
-            for (let i = 0; i <= 9; i++) {
+            ctx.lineWidth = N > 9 ? 0.5 : 0.8;
+            for (let i = 0; i <= N; i++) {
                 const pos = i * cellSize;
-                ctx.beginPath();
-                ctx.moveTo(pos, 0);
-                ctx.lineTo(pos, size);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(0, pos);
-                ctx.lineTo(size, pos);
-                ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(pos, 0);    ctx.lineTo(pos, size); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0,   pos);  ctx.lineTo(size, pos); ctx.stroke();
             }
-            
-            // Bold box lines
-            const boldLineColor = currentTheme.dark === '#1a1a1a' ? '#666' : // Neon theme
-                                 currentTheme.dark === '#4682b4' ? '#1e3a5f' : // Ocean theme
-                                 currentTheme.dark === '#ff8533' ? '#994d00' : // Sunset theme
-                                 '#3e2723'; // Default dark brown
+            // Bold box dividers
+            const boldLineColor = currentTheme.boldLineColor
+                || (currentTheme.dark === '#1a1a1a' ? '#666'
+                    : currentTheme.dark === '#4682b4' ? '#1e3a5f'
+                    : currentTheme.dark === '#ff8533' ? '#994d00'
+                    : '#3e2723');
             ctx.strokeStyle = boldLineColor;
-            ctx.lineWidth = 2;
-            
-            for (let i = 0; i <= 3; i++) {
-                const pos = i * 3 * cellSize;
-                ctx.beginPath();
-                ctx.moveTo(pos, 0);
-                ctx.lineTo(pos, size);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(0, pos);
-                ctx.lineTo(size, pos);
-                ctx.stroke();
+            ctx.lineWidth = N > 9 ? 1.5 : 2.5;
+            const boxes = N / BS;
+            for (let i = 0; i <= boxes; i++) {
+                const pos = i * BS * cellSize;
+                ctx.beginPath(); ctx.moveTo(pos, 0);    ctx.lineTo(pos, size); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0,   pos);  ctx.lineTo(size, pos); ctx.stroke();
             }
+            // Outer border (always sharp)
+            ctx.strokeStyle = currentTheme.outerBorderColor || boldLineColor;
+            ctx.lineWidth = N > 9 ? 2.5 : 3.5;
+            ctx.strokeRect(0.5, 0.5, size - 1, size - 1);
 
             // ── VARIANT OVERLAYS ────────────────────────────────────
             const variant = gameState.variant || 'classic';
+            // Variants are only defined for standard 9×9
+            if (N !== 9) return; // no overlay for 16×16
 
             // DIAGONAL
             if (variant === 'diagonal') {
@@ -2344,7 +2398,8 @@
             const col = Math.floor(x / cellSize);
             const row = Math.floor(y / cellSize);
             
-            if (row < 0 || row >= 9 || col < 0 || col >= 9) return;
+            const _N = gameState.gridSize || 9;
+            if (row < 0 || row >= _N || col < 0 || col >= _N) return;
 
             // Always allow selecting any cell — pre-filled and claimed cells can be
             // selected to trigger the "highlight matching numbers" visual, even though
@@ -2521,17 +2576,17 @@
             // Arrow keys to move selected cell
             if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
                 e.preventDefault();
-                let { row, col } = gameState.selectedCell || { row: 4, col: 4 };
+                const _GS2 = gameState.gridSize || 9;
+                const midCell = Math.floor(_GS2 / 2);
+                let { row, col } = gameState.selectedCell || { row: midCell, col: midCell };
                 let dr = 0, dc = 0;
                 if (e.key === 'ArrowUp')    dr = -1;
                 if (e.key === 'ArrowDown')  dr =  1;
                 if (e.key === 'ArrowLeft')  dc = -1;
                 if (e.key === 'ArrowRight') dc =  1;
 
-                // Walk in the chosen direction, skipping pre-filled (claim === -1) cells,
-                // stopping at the board boundary or the first non-prefilled cell.
                 let nr = row + dr, nc = col + dc;
-                while (nr >= 0 && nr < 9 && nc >= 0 && nc < 9) {
+                while (nr >= 0 && nr < _GS2 && nc >= 0 && nc < _GS2) {
                     if (gameState.claims[nr][nc] !== -1) {
                         gameState.selectedCell = { row: nr, col: nc };
                         gameState.highlightNumber = gameState.puzzle[nr][nc] || null;
@@ -2641,27 +2696,16 @@
         }
 
         function checkGameEnd() {
-            // Solo/puzzle mode: board full = puzzle complete
-            if (gameState.gameMode === 'solo') {
-                let isFull = true;
-                for (let r = 0; r < 9; r++) {
-                    for (let c = 0; c < 9; c++) {
-                        if (gameState.claims[r][c] === 0) { isFull = false; break; }
-                    }
-                    if (!isFull) break;
-                }
-                if (isFull) endGame(1, 'solved');
-                return;
-            }
-            // Competitive: board full = count cells
+            const _GN = gameState.gridSize || 9;
             let isFull = true;
-            for (let r = 0; r < 9; r++) {
-                for (let c = 0; c < 9; c++) {
-                    if (gameState.claims[r][c] === 0) { isFull = false; break; }
+            outer_cge: for (let r = 0; r < _GN; r++) {
+                for (let c = 0; c < _GN; c++) {
+                    if (gameState.claims[r][c] === 0) { isFull = false; break outer_cge; }
                 }
-                if (!isFull) break;
             }
-            if (isFull) endGameByCells();
+            if (!isFull) return;
+            if (gameState.gameMode === 'solo') { endGame(1, 'solved'); return; }
+            endGameByCells();
         }
 
         function endGameByTimeout() {
@@ -2903,6 +2947,165 @@
             return generateSudoku(difficulty || 'medium', 600, 'classic');
         }
 
+        // ============================================================
+        // 16×16 PUZZLE ENGINE
+        // Numbers 1-16. Boxes are 4×4.
+        // ============================================================
+        function generate16x16Solution() {
+            const N = 16, BS = 4;
+            const grid = Array(N).fill(null).map(() => Array(N).fill(0));
+            // Seed diagonal 4×4 boxes (no conflicts between them)
+            for (let box = 0; box < N; box += BS) {
+                const nums = Array.from({length:N},(_,i)=>i+1); shuffle(nums);
+                let idx = 0;
+                for (let r = box; r < box+BS; r++)
+                    for (let c = box; c < box+BS; c++)
+                        grid[r][c] = nums[idx++];
+            }
+            solve16(grid, N, BS);
+            return grid;
+        }
+
+        function solve16(grid, N, BS) {
+            const empty = find16Empty(grid, N);
+            if (!empty) return true;
+            const [row, col] = empty;
+            const nums = Array.from({length:N},(_,i)=>i+1); shuffle(nums);
+            for (const num of nums) {
+                if (valid16(grid, row, col, num, N, BS)) {
+                    grid[row][col] = num;
+                    if (solve16(grid, N, BS)) return true;
+                    grid[row][col] = 0;
+                }
+            }
+            return false;
+        }
+
+        function find16Empty(grid, N) {
+            for (let r = 0; r < N; r++)
+                for (let c = 0; c < N; c++)
+                    if (grid[r][c] === 0) return [r, c];
+            return null;
+        }
+
+        function valid16(grid, row, col, num, N, BS) {
+            for (let c = 0; c < N; c++) if (grid[row][c] === num) return false;
+            for (let r = 0; r < N; r++) if (grid[r][col] === num) return false;
+            const br = Math.floor(row/BS)*BS, bc = Math.floor(col/BS)*BS;
+            for (let r = br; r < br+BS; r++)
+                for (let c = bc; c < bc+BS; c++)
+                    if (grid[r][c] === num) return false;
+            return true;
+        }
+
+        function countSolutions16(grid, limit, N, BS) {
+            const empty = find16Empty(grid, N);
+            if (!empty) return 1;
+            const [row, col] = empty;
+            let count = 0;
+            for (let num = 1; num <= N; num++) {
+                if (!valid16(grid, row, col, num, N, BS)) continue;
+                grid[row][col] = num;
+                count += countSolutions16(grid, limit - count, N, BS);
+                grid[row][col] = 0;
+                if (count >= limit) break;
+            }
+            return count;
+        }
+
+        function generateSudoku16(difficulty) {
+            const N = 16, BS = 4;
+            const solution = generate16x16Solution();
+            const puzzle = solution.map(r => [...r]);
+            // Clue targets: easy≈88, medium≈68, hard≈52, extreme≈40
+            const targets = {easy:88, medium:68, hard:52, extreme:40};
+            const target = targets[difficulty] || 68;
+            const positions = [];
+            for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) positions.push([r,c]);
+            shuffle(positions);
+            let givens = N * N;
+            for (const [r, c] of positions) {
+                if (givens <= target) break;
+                const bk = puzzle[r][c];
+                puzzle[r][c] = 0;
+                // Quick uniqueness check (limit 2 means "is there >1 solution?")
+                if (countSolutions16(puzzle.map(row=>[...row]), 2, N, BS) === 1) {
+                    givens--;
+                } else {
+                    puzzle[r][c] = bk;
+                }
+            }
+            return { puzzle, solution };
+        }
+
+        function startGame16(difficulty) {
+            const diff = difficulty || 'medium';
+            gameState.gridSize = 16;
+            gameState.boxSize  = 4;
+            gameState.variant  = 'classic'; // variants not supported on 16×16
+            gameState.difficulty = diff;
+            gameState.gameMode   = 'solo';
+            gameState.vsAI       = false;
+
+            const { puzzle, solution } = generateSudoku16(diff);
+            gameState.puzzle   = puzzle;
+            gameState.solution = solution;
+            gameState.claims   = Array(16).fill(null).map(() => Array(16).fill(0));
+            gameState.pencilMarks = Array(16).fill(null).map(() =>
+                Array(16).fill(null).map(() => new Set()));
+            for (let r = 0; r < 16; r++)
+                for (let c = 0; c < 16; c++)
+                    if (gameState.puzzle[r][c] !== 0) gameState.claims[r][c] = -1;
+
+            gameState.timeRemaining = Infinity;
+            gameState.dojoElapsed   = 0;
+            gameState.scores        = { p1: 0, p2: 0 };
+            gameState.currentPlayer = 1;
+            gameState.isRunning     = true;
+            gameState.isPaused      = false;
+            gameState.selectedCell  = null;
+            gameState.lastMoveCell  = null;
+            gameState.animatingCells.clear();
+            gameState.lastTick      = Date.now();
+            gameState.wrongMoves    = 0;
+            gameState.errorCell     = null;
+            gameState.highlightNumber = null;
+            gameState.floatingScores  = [];
+
+            // Build 16-button number pad dynamically
+            rebuildNumberPad(16);
+            updateTimerDisplay();
+            updateScores();
+
+            lobby.style.display = 'none';
+            gameScreen.classList.add('active');
+            resizeCanvas();
+            drawGrid();
+            updateRemainingCounts();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function rebuildNumberPad(N) {
+            const pad = document.getElementById('permanent-number-pad');
+            if (!pad) return;
+            pad.innerHTML = '';
+            for (let i = 1; i <= N; i++) {
+                const btn = document.createElement('button');
+                btn.className = 'num-pad-btn';
+                btn.dataset.num = i;
+                btn.innerHTML = i + '<span class="num-remaining" id="remaining-' + i + '">' + N + '</span>';
+                btn.addEventListener('click', () => {
+                    if (gameState.gameMode === 'passplay' && gameState.currentPlayer !== 1 && gameState.inputMode !== 'pencil') return;
+                    if (!btn.classList.contains('disabled')) handleNumberInput(i);
+                });
+                pad.appendChild(btn);
+            }
+            // Adjust grid columns for 16-pad
+            pad.style.gridTemplateColumns = N > 9
+                ? 'repeat(8, 1fr)'
+                : 'repeat(9, 1fr)';
+        }
+
         function getValidNumbers(row, col) {
             const valid = [];
             for (let num = 1; num <= 9; num++) {
@@ -2914,10 +3117,11 @@
         }
 
         function isValidMove(row, col, num) {
-            // Delegate to the master variant-aware placement validator so the AI
-            // respects ALL variant constraints (jigsaw regions, killer cage uniqueness,
-            // thermo ordering, consecutive markers, arrow sums, even/odd masks,
-            // diagonal, windoku, antiknight) — not just row/column/box rules.
+            // For 16×16 mode use the dedicated 16×16 validator
+            if (gameState.gridSize === 16) {
+                return valid16(gameState.puzzle, row, col, num, 16, 4);
+            }
+            // 9×9: delegate to master variant-aware placement validator
             return isValidPlacement(gameState.puzzle, row, col, num, gameState.variant);
         }
 

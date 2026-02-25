@@ -368,6 +368,8 @@ create policy "public rw" on sudoku_rooms
                         <option value="neon">Neon</option>
                         <option value="ocean">Ocean</option>
                         <option value="sunset">Sunset</option>
+                        <option value="clean">Clean (Modern)</option>
+                        <option value="night">Night (Modern)</option>
                     </select>
                 </div>
                 <div class="setting-item">
@@ -687,6 +689,7 @@ create policy "public rw" on sudoku_rooms
                 <button class="num-pad-btn" data-num="7">7<span class="num-remaining" id="remaining-7">9</span></button>
                 <button class="num-pad-btn" data-num="8">8<span class="num-remaining" id="remaining-8">9</span></button>
                 <button class="num-pad-btn" data-num="9">9<span class="num-remaining" id="remaining-9">9</span></button>
+                <!-- 10-16 hidden initially; shown in 16x16 mode via rebuildNumberPad -->
             </div>
         </div>
     </div>
@@ -757,9 +760,11 @@ create policy "public rw" on sudoku_rooms
             </div>
             <div class="modal-body">
                 <div class="difficulty-grid">
-                    <button class="difficulty-btn easy" data-diff="easy">Easy</button>
-                    <button class="difficulty-btn medium" data-diff="medium">Medium</button>
-                    <button class="difficulty-btn hard" data-diff="hard">Hard</button>
+                    <button class="difficulty-btn easy"    data-diff="easy">Easy</button>
+                    <button class="difficulty-btn medium"  data-diff="medium">Medium</button>
+                    <button class="difficulty-btn hard"    data-diff="hard">Hard</button>
+                    <button class="difficulty-btn extreme" data-diff="extreme">Extreme</button>
+                    <button class="difficulty-btn size16"  data-diff="easy" data-size="16" style="grid-column:1/-1">16 × 16</button>
                 </div>
             </div>
             <div class="modal-footer">
