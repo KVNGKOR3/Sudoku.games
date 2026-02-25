@@ -547,8 +547,16 @@
             let mask = 0;
             for (let c = 0; c < 9; c++) if (grid[row][c]) mask |= 1 << grid[row][c];
             for (let r = 0; r < 9; r++) if (grid[r][col]) mask |= 1 << grid[r][col];
-            const br = Math.floor(row/3)*3, bc = Math.floor(col/3)*3;
-            for (let r = br; r < br+3; r++) for (let c = bc; c < bc+3; c++) if (grid[r][c]) mask |= 1 << grid[r][c];
+            // Jigsaw uses irregular regions, NOT the standard 3x3 box —
+            // without this the MRV heuristic is wrong and the solver backtracks exponentially
+            if (variant === 'jigsaw' && variantData.regions) {
+                const rid = variantData.regions[row][col];
+                for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++)
+                    if (variantData.regions[r][c] === rid && grid[r][c]) mask |= 1 << grid[r][c];
+            } else {
+                const br = Math.floor(row/3)*3, bc = Math.floor(col/3)*3;
+                for (let r = br; r < br+3; r++) for (let c = bc; c < bc+3; c++) if (grid[r][c]) mask |= 1 << grid[r][c];
+            }
             // Extra constraints for variants
             if (variant === 'diagonal') {
                 if (row === col) for (let i = 0; i < 9; i++) if (grid[i][i]) mask |= 1 << grid[i][i];
@@ -680,30 +688,56 @@
 
         // ── JIGSAW ──────────────────────────────────────────────────
         // Fixed 9-region layout — each region has exactly 9 cells, replacing 3×3 boxes
+        // Each layout must have exactly 9 cells per region (0–8).
+        // All 4 layouts below are verified: every region count = 9.
         const JIGSAW_LAYOUTS = [
             // Layout A
             [
-                [0,0,0,1,1,2,2,2,2],
-                [0,0,1,1,1,2,3,2,2],
-                [0,4,1,5,1,3,3,3,2],
-                [4,4,4,5,5,3,6,3,8],
-                [4,4,5,5,6,6,6,8,8],
-                [4,7,5,6,6,7,7,8,8],
-                [7,7,7,6,7,7,8,8,8],
-                [7,7,5,5,7,6,6,8,8],
-                [5,5,5,5,6,6,6,8,8],
+                [6,5,5,5,4,4,4,4,4],
+                [6,6,5,5,3,4,3,4,4],
+                [6,6,5,3,3,3,3,3,4],
+                [6,6,5,5,3,3,2,2,2],
+                [6,6,5,7,1,1,2,8,8],
+                [7,7,7,7,1,2,2,8,8],
+                [7,0,7,7,1,2,2,2,8],
+                [0,0,0,7,1,1,1,1,8],
+                [0,0,0,0,0,1,8,8,8],
             ],
             // Layout B
             [
-                [0,0,1,1,1,1,2,2,2],
-                [0,0,0,1,3,1,2,4,2],
-                [0,5,0,3,3,2,2,4,2],
-                [5,5,3,3,6,6,4,4,4],
-                [5,5,5,3,6,6,6,4,7],
-                [5,8,8,6,6,7,7,7,7],
-                [8,8,8,6,7,7,4,4,7],
-                [8,8,3,3,3,7,4,4,4],
-                [8,3,3,6,6,6,4,4,4],
+                [6,6,6,6,6,1,1,1,1],
+                [6,6,5,5,5,5,0,0,1],
+                [6,7,7,5,5,5,0,0,1],
+                [6,7,4,4,5,0,0,1,1],
+                [7,7,8,4,5,4,0,0,1],
+                [7,7,8,4,4,4,0,2,2],
+                [7,7,8,8,3,4,4,2,2],
+                [8,8,8,3,3,2,2,2,2],
+                [8,8,3,3,3,3,3,3,2],
+            ],
+            // Layout C
+            [
+                [7,6,6,6,6,6,6,5,5],
+                [7,6,6,6,1,1,1,5,5],
+                [7,7,0,0,1,1,3,5,5],
+                [7,7,0,0,1,1,3,5,5],
+                [7,7,0,0,0,1,3,5,3],
+                [8,7,0,0,2,1,3,3,3],
+                [8,8,2,2,2,2,2,3,4],
+                [8,8,8,2,4,2,4,3,4],
+                [8,8,8,2,4,4,4,4,4],
+            ],
+            // Layout D
+            [
+                [2,2,2,2,2,2,1,1,1],
+                [3,0,2,2,2,1,1,1,1],
+                [3,0,0,0,0,0,0,1,1],
+                [3,0,0,4,7,7,7,7,7],
+                [3,3,4,4,4,5,7,7,7],
+                [3,3,4,4,4,5,5,7,6],
+                [3,8,4,4,5,5,5,6,6],
+                [3,8,8,8,8,5,6,6,6],
+                [8,8,8,8,5,5,6,6,6],
             ],
         ];
 
@@ -795,28 +829,45 @@
 
         // ── ARROW ───────────────────────────────────────────────────
         function generateArrows(solution) {
+            // Strategy: for each candidate circle cell, search all 8 directions for a
+            // contiguous sequence of cells whose solution values sum exactly to the
+            // circle's solution value. This is far more reliable than random attempts
+            // because we start from what we *need* (the target sum) and look for it.
             const arrows = [];
             const used = new Set();
-            for (let attempt = 0; attempt < 40 && arrows.length < 4; attempt++) {
-                const cr = 1+Math.floor(Math.random()*7), cc = 1+Math.floor(Math.random()*7);
+            const allPos = [];
+            for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) allPos.push([r,c]);
+            shuffle(allPos);
+
+            const dirs = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
+
+            for (const [cr, cc] of allPos) {
+                if (arrows.length >= 5) break;
                 if (used.has(`${cr},${cc}`)) continue;
-                const dirs = [[-1,0],[1,0],[0,-1],[0,1]]; shuffle(dirs);
-                const [dr,dc] = dirs[0];
-                const len = 2+Math.floor(Math.random()*3);
-                const cells = [];
-                let ok = true;
-                for (let i = 1; i <= len; i++) {
-                    const nr=cr+dr*i, nc=cc+dc*i;
-                    if(nr<0||nr>8||nc<0||nc>8||used.has(`${nr},${nc}`)){ok=false;break;}
-                    cells.push([nr,nc]);
+                const target = solution[cr][cc]; // guaranteed 1-9
+                let found = false;
+                const shuffledDirs = [...dirs]; shuffle(shuffledDirs);
+                for (const [dr, dc] of shuffledDirs) {
+                    if (found) break;
+                    const cells = [];
+                    let sum = 0;
+                    let r = cr, c = cc;
+                    for (let step = 1; step <= 4; step++) {
+                        r += dr; c += dc;
+                        if (r < 0 || r > 8 || c < 0 || c > 8) break;
+                        if (used.has(`${r},${c}`) || (r===cr && c===cc)) break;
+                        sum += solution[r][c];
+                        cells.push([r,c]);
+                        if (sum === target && cells.length >= 1) {
+                            used.add(`${cr},${cc}`);
+                            cells.forEach(([ar,ac])=>used.add(`${ar},${ac}`));
+                            arrows.push({circle:[cr,cc], cells:[...cells], sum:target});
+                            found = true;
+                            break;
+                        }
+                        if (sum > target) break;
+                    }
                 }
-                if(!ok||cells.length<2) continue;
-                const sum = cells.reduce((s,[r,c])=>s+solution[r][c],0);
-                // circle must equal arrow sum, and must be a valid digit 1-9
-                if(sum<1||sum>9||sum!==solution[cr][cc]) continue;
-                used.add(`${cr},${cc}`);
-                cells.forEach(([r,c])=>used.add(`${r},${c}`));
-                arrows.push({circle:[cr,cc], cells, sum:solution[cr][cc]});
             }
             return arrows;
         }
@@ -1418,10 +1469,17 @@
         // GAME LIFECYCLE
         // ============================================
         function startGame() {
-            // Generate a fresh puzzle each time, scaled to time control
+            // Generate a fresh puzzle each time, scaled to time control.
+            // NOTE: generateSudoku calls generateCompleteSolution which — for jigsaw —
+            // sets variantData.regions internally during generation.  We MUST capture
+            // those regions and reuse them; generating new regions afterward would make
+            // the puzzle incompatible with the displayed region layout.
             const puzzleData = generateSudoku(gameState.difficulty, gameState.timeLimit);
             gameState.puzzle = puzzleData.puzzle.map(row => [...row]);
             gameState.solution = puzzleData.solution.map(row => [...row]);
+
+            // Capture jigsaw regions that were baked in during generation (if any)
+            const jigsawRegionsFromGeneration = variantData.regions || null;
 
             // Generate variant-specific constraint data
             variantData = {};
@@ -1432,7 +1490,9 @@
                 variantData.cages = k.cages;
                 variantData.killerAssigned = k.assigned;
             } else if (vt === 'jigsaw') {
-                variantData.regions = getJigsawRegions();
+                // Reuse the regions that the puzzle was solved against —
+                // do NOT call getJigsawRegions() again here.
+                variantData.regions = jigsawRegionsFromGeneration;
             } else if (vt === 'thermo') {
                 variantData.thermos = generateThermos();
             } else if (vt === 'consecutive') {
@@ -2838,6 +2898,11 @@
             scheduleAIMove();
         }
 
+        // generatePuzzle is used by tournament match creation
+        function generatePuzzle(difficulty) {
+            return generateSudoku(difficulty || 'medium', 600, 'classic');
+        }
+
         function getValidNumbers(row, col) {
             const valid = [];
             for (let num = 1; num <= 9; num++) {
@@ -2849,41 +2914,11 @@
         }
 
         function isValidMove(row, col, num) {
-            const grid = gameState.puzzle;
-            // Standard checks
-            for (let c = 0; c < 9; c++) if (grid[row][c] === num && c !== col) return false;
-            for (let r = 0; r < 9; r++) if (grid[r][col] === num && r !== row) return false;
-            const boxRow = Math.floor(row/3)*3, boxCol = Math.floor(col/3)*3;
-            for (let r = boxRow; r < boxRow+3; r++)
-                for (let c = boxCol; c < boxCol+3; c++)
-                    if (grid[r][c] === num && (r !== row || c !== col)) return false;
-
-            const v = gameState.variant || 'classic';
-
-            if (v === 'diagonal') {
-                if (row === col) for (let i = 0; i < 9; i++) if (grid[i][i] === num && i !== row) return false;
-                if (row+col === 8) for (let i = 0; i < 9; i++) if (grid[i][8-i] === num && i !== row) return false;
-            }
-
-            if (v === 'windoku') {
-                for (const [wr, wc] of WINDOKU_WINDOWS) {
-                    if (row>=wr&&row<wr+3&&col>=wc&&col<wc+3) {
-                        for (let r=wr; r<wr+3; r++)
-                            for (let c=wc; c<wc+3; c++)
-                                if (grid[r][c]===num&&(r!==row||c!==col)) return false;
-                    }
-                }
-            }
-
-            if (v === 'antiknight') {
-                const km = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-                for (const [dr,dc] of km) {
-                    const nr=row+dr, nc=col+dc;
-                    if (nr>=0&&nr<9&&nc>=0&&nc<9&&grid[nr][nc]===num) return false;
-                }
-            }
-
-            return true;
+            // Delegate to the master variant-aware placement validator so the AI
+            // respects ALL variant constraints (jigsaw regions, killer cage uniqueness,
+            // thermo ordering, consecutive markers, arrow sums, even/odd masks,
+            // diagonal, windoku, antiknight) — not just row/column/box rules.
+            return isValidPlacement(gameState.puzzle, row, col, num, gameState.variant);
         }
 
         // ============================================
