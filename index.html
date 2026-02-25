@@ -270,36 +270,19 @@ create policy "public rw" on sudoku_rooms
             <!-- Variant Selection -->
             <div class="mode-section">
                 <div class="section-label">Sudoku Variant</div>
-                <div class="mode-grid" id="variant-grid" style="grid-template-columns:repeat(2,1fr);gap:8px;">
-                    <div class="mode-card active" data-variant="classic" style="padding:10px 12px;">
-                        <div class="mode-icon" style="font-size:1.2rem;">🟫</div>
-                        <div class="mode-info">
-                            <div class="mode-name" style="font-size:0.85rem;">Classic</div>
-                            <div class="mode-desc" style="font-size:0.7rem;">Standard rules</div>
-                        </div>
-                    </div>
-                    <div class="mode-card" data-variant="diagonal" style="padding:10px 12px;">
-                        <div class="mode-icon" style="font-size:1.2rem;">✖️</div>
-                        <div class="mode-info">
-                            <div class="mode-name" style="font-size:0.85rem;">Diagonal</div>
-                            <div class="mode-desc" style="font-size:0.7rem;">Diagonals = 1–9</div>
-                        </div>
-                    </div>
-                    <div class="mode-card" data-variant="windoku" style="padding:10px 12px;">
-                        <div class="mode-icon" style="font-size:1.2rem;">🪟</div>
-                        <div class="mode-info">
-                            <div class="mode-name" style="font-size:0.85rem;">Windoku</div>
-                            <div class="mode-desc" style="font-size:0.7rem;">4 extra windows</div>
-                        </div>
-                    </div>
-                    <div class="mode-card" data-variant="antiknight" style="padding:10px 12px;">
-                        <div class="mode-icon" style="font-size:1.2rem;">♞</div>
-                        <div class="mode-info">
-                            <div class="mode-name" style="font-size:0.85rem;">Anti-Knight</div>
-                            <div class="mode-desc" style="font-size:0.7rem;">No knight moves</div>
-                        </div>
-                    </div>
+                <div class="variant-pill-row" id="variant-grid">
+                    <button class="variant-pill active" data-variant="classic">🟫 Classic</button>
+                    <button class="variant-pill" data-variant="killer">🔢 Killer</button>
+                    <button class="variant-pill" data-variant="diagonal">✖ Diagonal</button>
+                    <button class="variant-pill" data-variant="jigsaw">🧩 Jigsaw</button>
+                    <button class="variant-pill" data-variant="thermo">🌡 Thermo</button>
+                    <button class="variant-pill" data-variant="consecutive">↔ Consec.</button>
+                    <button class="variant-pill" data-variant="arrow">➡ Arrow</button>
+                    <button class="variant-pill" data-variant="evenodd">⬡ Even/Odd</button>
+                    <button class="variant-pill" data-variant="windoku">🪟 Windoku</button>
+                    <button class="variant-pill" data-variant="antiknight">♞ Anti-Knight</button>
                 </div>
+                <div class="variant-desc-line" id="variant-desc">Standard 9×9 Sudoku — rows, columns and boxes each contain 1–9.</div>
             </div>
 
             <!-- AI Toggle -->

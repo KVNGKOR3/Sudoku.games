@@ -539,6 +539,12 @@
         function generateCompleteSolution(variant) {
             variant = variant || gameState.variant || 'classic';
             const grid = Array(9).fill(null).map(() => Array(9).fill(0));
+
+            // For jigsaw, pre-generate regions so isValidPlacement can use them
+            if (variant === 'jigsaw') {
+                variantData.regions = getJigsawRegions();
+            }
+
             // For classic/antiknight fill diagonal boxes first for speed
             if (variant === 'classic' || variant === 'antiknight') {
                 for (let box = 0; box < 9; box += 3) fillBox(grid, box, box);
@@ -575,42 +581,302 @@
         // Windoku extra windows: top-left corners at (1,1),(1,5),(5,1),(5,5)
         const WINDOKU_WINDOWS = [[1,1],[1,5],[5,1],[5,5]];
 
+        // ============================================================
+        // VARIANT DATA — generated fresh each game, stored here
+        // ============================================================
+        let variantData = {};
+
+        // ── KILLER ──────────────────────────────────────────────────
+        function generateKillerCages(solution) {
+            const assigned = Array(9).fill(null).map(() => Array(9).fill(-1));
+            const cages = [];
+            const order = [];
+            for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) order.push([r,c]);
+            shuffle(order);
+            let cageId = 0;
+            for (const [sr, sc] of order) {
+                if (assigned[sr][sc] !== -1) continue;
+                const maxSize = 2 + Math.floor(Math.random() * 4); // 2-5
+                const cells = [[sr, sc]];
+                assigned[sr][sc] = cageId;
+                const frontier = [[sr, sc]];
+                while (cells.length < maxSize && frontier.length) {
+                    const fi = Math.floor(Math.random() * frontier.length);
+                    const [fr, fc] = frontier[fi];
+                    const nbrs = [[fr-1,fc],[fr+1,fc],[fr,fc-1],[fr,fc+1]]
+                        .filter(([nr,nc]) => nr>=0&&nr<9&&nc>=0&&nc<9&&assigned[nr][nc]===-1);
+                    if (!nbrs.length) { frontier.splice(fi,1); continue; }
+                    const [nr,nc] = nbrs[Math.floor(Math.random()*nbrs.length)];
+                    assigned[nr][nc] = cageId;
+                    cells.push([nr,nc]);
+                    frontier.push([nr,nc]);
+                }
+                const sum = cells.reduce((s,[r,c]) => s + solution[r][c], 0);
+                cages.push({ id: cageId, cells, sum });
+                cageId++;
+            }
+            // mop up any stray -1 cells
+            for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+                if (assigned[r][c] === -1) {
+                    cages.push({ id: cageId, cells: [[r,c]], sum: solution[r][c] });
+                    assigned[r][c] = cageId++;
+                }
+            }
+            return { cages, assigned };
+        }
+
+        function killerValidForCell(grid, row, col, num, cages, assigned) {
+            const cid = assigned[row][col];
+            const cage = cages.find(c => c.id === cid);
+            if (!cage) return true;
+            // no repeat in cage
+            for (const [r,c] of cage.cells)
+                if ((r!==row||c!==col) && grid[r][c]===num) return false;
+            // partial-sum check: running sum + num must not exceed cage sum
+            const partial = cage.cells.reduce((s,[r,c]) => s + (r===row&&c===col ? 0 : grid[r][c]), 0);
+            if (partial + num > cage.sum) return false;
+            // if this fills the cage, sum must be exact
+            const filled = cage.cells.filter(([r,c]) => r!==row||c!==col).every(([r,c]) => grid[r][c]!==0);
+            if (filled && partial + num !== cage.sum) return false;
+            return true;
+        }
+
+        // ── JIGSAW ──────────────────────────────────────────────────
+        // Fixed 9-region layout — each region has exactly 9 cells, replacing 3×3 boxes
+        const JIGSAW_LAYOUTS = [
+            // Layout A
+            [
+                [0,0,0,1,1,2,2,2,2],
+                [0,0,1,1,1,2,3,2,2],
+                [0,4,1,5,1,3,3,3,2],
+                [4,4,4,5,5,3,6,3,8],
+                [4,4,5,5,6,6,6,8,8],
+                [4,7,5,6,6,7,7,8,8],
+                [7,7,7,6,7,7,8,8,8],
+                [7,7,5,5,7,6,6,8,8],
+                [5,5,5,5,6,6,6,8,8],
+            ],
+            // Layout B
+            [
+                [0,0,1,1,1,1,2,2,2],
+                [0,0,0,1,3,1,2,4,2],
+                [0,5,0,3,3,2,2,4,2],
+                [5,5,3,3,6,6,4,4,4],
+                [5,5,5,3,6,6,6,4,7],
+                [5,8,8,6,6,7,7,7,7],
+                [8,8,8,6,7,7,4,4,7],
+                [8,8,3,3,3,7,4,4,4],
+                [8,3,3,6,6,6,4,4,4],
+            ],
+        ];
+
+        function getJigsawRegions() {
+            const layout = JIGSAW_LAYOUTS[Math.floor(Math.random() * JIGSAW_LAYOUTS.length)];
+            // Randomly permute region IDs for variety
+            const perm = [0,1,2,3,4,5,6,7,8]; shuffle(perm);
+            return layout.map(row => row.map(v => perm[v]));
+        }
+
+        function jigsawValidForCell(grid, row, col, num, regions) {
+            const rid = regions[row][col];
+            for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++)
+                if ((r!==row||c!==col) && regions[r][c]===rid && grid[r][c]===num) return false;
+            return true;
+        }
+
+        // Jigsaw uses region instead of box in isValidPlacement
+        function isValidPlacementJigsaw(grid, row, col, num, regions) {
+            for (let c = 0; c < 9; c++) if (grid[row][c]===num) return false;
+            for (let r = 0; r < 9; r++) if (grid[r][col]===num) return false;
+            if (!jigsawValidForCell(grid, row, col, num, regions)) return false;
+            return true;
+        }
+
+        // ── THERMO ──────────────────────────────────────────────────
+        function generateThermos() {
+            const thermos = [];
+            const used = new Set();
+            for (let attempt = 0; attempt < 40 && thermos.length < 5; attempt++) {
+                const r0 = Math.floor(Math.random()*9), c0 = Math.floor(Math.random()*9);
+                if (used.has(`${r0},${c0}`)) continue;
+                const dirs = [[-1,0],[1,0],[0,-1],[0,1]]; shuffle(dirs);
+                const [dr,dc] = dirs[0];
+                const len = 3 + Math.floor(Math.random()*3); // 3-5
+                const cells = [[r0,c0]];
+                let ok = true;
+                for (let i = 1; i < len; i++) {
+                    const nr = cells[i-1][0]+dr, nc = cells[i-1][1]+dc;
+                    if (nr<0||nr>8||nc<0||nc>8||used.has(`${nr},${nc}`)) { ok=false; break; }
+                    cells.push([nr,nc]);
+                }
+                if (!ok || cells.length < 3) continue;
+                cells.forEach(([r,c]) => used.add(`${r},${c}`));
+                thermos.push(cells);
+            }
+            return thermos;
+        }
+
+        function thermoValidForCell(grid, row, col, num, thermos) {
+            for (const thermo of thermos) {
+                const idx = thermo.findIndex(([r,c]) => r===row&&c===col);
+                if (idx === -1) continue;
+                if (idx > 0) {
+                    const [pr,pc] = thermo[idx-1];
+                    if (grid[pr][pc]!==0 && num <= grid[pr][pc]) return false;
+                }
+                if (idx < thermo.length-1) {
+                    const [nr,nc] = thermo[idx+1];
+                    if (grid[nr][nc]!==0 && num >= grid[nr][nc]) return false;
+                }
+            }
+            return true;
+        }
+
+        // ── CONSECUTIVE ─────────────────────────────────────────────
+        function generateConsecutivePairs(solution) {
+            const pairs = [];
+            for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+                if (c+1<9 && Math.abs(solution[r][c]-solution[r][c+1])===1 && Math.random()<0.45)
+                    pairs.push({r1:r,c1:c,r2:r,c2:c+1});
+                if (r+1<9 && Math.abs(solution[r][c]-solution[r+1][c])===1 && Math.random()<0.45)
+                    pairs.push({r1:r,c1:c,r2:r+1,c2:c});
+            }
+            return pairs;
+        }
+
+        function consecutiveValidForCell(grid, row, col, num, pairs) {
+            for (const p of pairs) {
+                if (p.r1===row&&p.c1===col) {
+                    const v=grid[p.r2][p.c2]; if(v&&Math.abs(num-v)!==1) return false;
+                }
+                if (p.r2===row&&p.c2===col) {
+                    const v=grid[p.r1][p.c1]; if(v&&Math.abs(num-v)!==1) return false;
+                }
+            }
+            return true;
+        }
+
+        // ── ARROW ───────────────────────────────────────────────────
+        function generateArrows(solution) {
+            const arrows = [];
+            const used = new Set();
+            for (let attempt = 0; attempt < 40 && arrows.length < 4; attempt++) {
+                const cr = 1+Math.floor(Math.random()*7), cc = 1+Math.floor(Math.random()*7);
+                if (used.has(`${cr},${cc}`)) continue;
+                const dirs = [[-1,0],[1,0],[0,-1],[0,1]]; shuffle(dirs);
+                const [dr,dc] = dirs[0];
+                const len = 2+Math.floor(Math.random()*3);
+                const cells = [];
+                let ok = true;
+                for (let i = 1; i <= len; i++) {
+                    const nr=cr+dr*i, nc=cc+dc*i;
+                    if(nr<0||nr>8||nc<0||nc>8||used.has(`${nr},${nc}`)){ok=false;break;}
+                    cells.push([nr,nc]);
+                }
+                if(!ok||cells.length<2) continue;
+                const sum = cells.reduce((s,[r,c])=>s+solution[r][c],0);
+                // circle must equal arrow sum, and must be a valid digit 1-9
+                if(sum<1||sum>9||sum!==solution[cr][cc]) continue;
+                used.add(`${cr},${cc}`);
+                cells.forEach(([r,c])=>used.add(`${r},${c}`));
+                arrows.push({circle:[cr,cc], cells, sum:solution[cr][cc]});
+            }
+            return arrows;
+        }
+
+        function arrowValidForCell(grid, row, col, num, arrows) {
+            for (const arrow of arrows) {
+                const [cr,cc] = arrow.circle;
+                const isCircle = cr===row&&cc===col;
+                const arrowIdx = arrow.cells.findIndex(([r,c])=>r===row&&c===col);
+                if (!isCircle && arrowIdx===-1) continue;
+                const circleVal = isCircle ? num : grid[cr][cc];
+                if (!circleVal) continue;
+                const vals = arrow.cells.map(([r,c])=>r===row&&c===col?num:grid[r][c]);
+                const partialSum = vals.reduce((s,v)=>s+(v||0),0);
+                if (partialSum > circleVal) return false;
+                if (vals.every(v=>v>0) && partialSum !== circleVal) return false;
+            }
+            return true;
+        }
+
+        // ── EVEN-ODD ────────────────────────────────────────────────
+        function generateEvenOddMask(solution) {
+            const mask = Array(9).fill(null).map(()=>Array(9).fill(null));
+            for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++)
+                if (Math.random() < 0.6)
+                    mask[r][c] = solution[r][c]%2===0 ? 'even' : 'odd';
+            return mask;
+        }
+
+        function evenOddValidForCell(num, row, col, mask) {
+            const m = mask[row][col];
+            if (!m) return true;
+            if (m==='even' && num%2!==0) return false;
+            if (m==='odd'  && num%2!==1) return false;
+            return true;
+        }
+
+        // ── MASTER isValidPlacement (all variants) ───────────────────
         function isValidPlacement(grid, row, col, num, variant) {
-            // Standard row/col/box
-            for (let c = 0; c < 9; c++) if (grid[row][c] === num) return false;
-            for (let r = 0; r < 9; r++) if (grid[r][col] === num) return false;
-            const br = Math.floor(row/3)*3, bc = Math.floor(col/3)*3;
-            for (let r = br; r < br+3; r++) for (let c = bc; c < bc+3; c++) if (grid[r][c] === num) return false;
+            // Always: row uniqueness
+            for (let c = 0; c < 9; c++) if (grid[row][c]===num) return false;
+            // Always: col uniqueness
+            for (let r = 0; r < 9; r++) if (grid[r][col]===num) return false;
 
             variant = variant || gameState.variant || 'classic';
 
+            // Jigsaw replaces box constraint entirely
+            if (variant === 'jigsaw') {
+                if (variantData.regions) {
+                    if (!jigsawValidForCell(grid, row, col, num, variantData.regions)) return false;
+                }
+                // no box check for jigsaw
+            } else {
+                // Standard 3×3 box for all other variants
+                const br = Math.floor(row/3)*3, bc = Math.floor(col/3)*3;
+                for (let r = br; r < br+3; r++)
+                    for (let c = bc; c < bc+3; c++)
+                        if (grid[r][c]===num) return false;
+            }
+
             if (variant === 'diagonal') {
-                if (row === col) { // main diagonal
-                    for (let i = 0; i < 9; i++) if (i !== col && grid[row-(row-i)][i] !== undefined && grid[i][i] === num) return false;
-                    for (let i = 0; i < 9; i++) if (grid[i][i] === num && i !== row) return false;
-                }
-                if (row + col === 8) { // anti-diagonal
-                    for (let i = 0; i < 9; i++) if (grid[i][8-i] === num && i !== row) return false;
-                }
+                if (row===col) for (let i=0;i<9;i++) if (grid[i][i]===num&&i!==row) return false;
+                if (row+col===8) for (let i=0;i<9;i++) if (grid[i][8-i]===num&&i!==row) return false;
             }
 
             if (variant === 'windoku') {
-                for (const [wr, wc] of WINDOKU_WINDOWS) {
-                    if (row >= wr && row < wr+3 && col >= wc && col < wc+3) {
-                        for (let r = wr; r < wr+3; r++)
-                            for (let c = wc; c < wc+3; c++)
-                                if (grid[r][c] === num && (r !== row || c !== col)) return false;
+                for (const [wr,wc] of WINDOKU_WINDOWS) {
+                    if (row>=wr&&row<wr+3&&col>=wc&&col<wc+3) {
+                        for (let r=wr;r<wr+3;r++)
+                            for (let c=wc;c<wc+3;c++)
+                                if (grid[r][c]===num&&(r!==row||c!==col)) return false;
                     }
                 }
             }
 
             if (variant === 'antiknight') {
-                const knightMoves = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-                for (const [dr, dc] of knightMoves) {
-                    const nr = row+dr, nc = col+dc;
+                const km=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+                for (const [dr,dc] of km) {
+                    const nr=row+dr, nc=col+dc;
                     if (nr>=0&&nr<9&&nc>=0&&nc<9&&grid[nr][nc]===num) return false;
                 }
             }
+
+            if (variant==='killer' && variantData.cages && variantData.killerAssigned)
+                if (!killerValidForCell(grid,row,col,num,variantData.cages,variantData.killerAssigned)) return false;
+
+            if (variant==='thermo' && variantData.thermos)
+                if (!thermoValidForCell(grid,row,col,num,variantData.thermos)) return false;
+
+            if (variant==='consecutive' && variantData.consecutivePairs)
+                if (!consecutiveValidForCell(grid,row,col,num,variantData.consecutivePairs)) return false;
+
+            if (variant==='arrow' && variantData.arrows)
+                if (!arrowValidForCell(grid,row,col,num,variantData.arrows)) return false;
+
+            if (variant==='evenodd' && variantData.evenOddMask)
+                if (!evenOddValidForCell(num,row,col,variantData.evenOddMask)) return false;
 
             return true;
         }
@@ -978,12 +1244,27 @@
                 });
             });
 
-            // Variant cards
-            document.querySelectorAll('.mode-card[data-variant]').forEach(card => {
-                card.addEventListener('click', () => {
-                    document.querySelectorAll('.mode-card[data-variant]').forEach(c => c.classList.remove('active'));
-                    card.classList.add('active');
-                    gameState.variant = card.dataset.variant;
+            // Variant pills
+            const VARIANT_DESCS = {
+                classic:    'Standard 9×9 Sudoku — rows, columns and boxes each contain 1–9.',
+                killer:     'Cages must sum to the shown total. No digit repeats within a cage.',
+                diagonal:   'Both main diagonals must also contain each digit exactly once.',
+                jigsaw:     'Irregular jigsaw regions replace the standard 3×3 boxes.',
+                thermo:     'Values must strictly increase along each thermometer from the bulb.',
+                consecutive:'Adjacent cells connected by a bar must be consecutive (differ by 1).',
+                arrow:      'Digits on an arrow must sum to the circled digit at its base.',
+                evenodd:    'Circle = must be even. Square = must be odd.',
+                windoku:    'Four shaded 3×3 windows also act as extra boxes.',
+                antiknight: 'No two identical digits may be a chess knight\'s move apart.',
+            };
+            document.querySelectorAll('.variant-pill[data-variant]').forEach(pill => {
+                pill.addEventListener('click', () => {
+                    document.querySelectorAll('.variant-pill[data-variant]').forEach(p => p.classList.remove('active'));
+                    pill.classList.add('active');
+                    gameState.variant = pill.dataset.variant;
+                    const descEl = document.getElementById('variant-desc');
+                    if (descEl) descEl.textContent = VARIANT_DESCS[pill.dataset.variant] || '';
+                    updateVariantBadge();
                 });
             });
 
@@ -1111,6 +1392,26 @@
             const puzzleData = generateSudoku(gameState.difficulty, gameState.timeLimit);
             gameState.puzzle = puzzleData.puzzle.map(row => [...row]);
             gameState.solution = puzzleData.solution.map(row => [...row]);
+
+            // Generate variant-specific constraint data
+            variantData = {};
+            const sol = gameState.solution;
+            const vt = gameState.variant || 'classic';
+            if (vt === 'killer') {
+                const k = generateKillerCages(sol);
+                variantData.cages = k.cages;
+                variantData.killerAssigned = k.assigned;
+            } else if (vt === 'jigsaw') {
+                variantData.regions = getJigsawRegions();
+            } else if (vt === 'thermo') {
+                variantData.thermos = generateThermos();
+            } else if (vt === 'consecutive') {
+                variantData.consecutivePairs = generateConsecutivePairs(sol);
+            } else if (vt === 'arrow') {
+                variantData.arrows = generateArrows(sol);
+            } else if (vt === 'evenodd') {
+                variantData.evenOddMask = generateEvenOddMask(sol);
+            }
             
             gameState.claims = Array(9).fill(null).map(() => Array(9).fill(0));
             gameState.pencilMarks = Array(9).fill(null).map(() => Array(9).fill(null).map(() => new Set()));
@@ -4919,12 +5220,16 @@
             function updateVariantBadge() {
                 const badge = document.getElementById('variant-badge');
                 if (!badge) return;
-                const labels = { classic: '', diagonal: '✖ Diagonal', windoku: '🪟 Windoku', antiknight: '♞ Anti-Knight' };
+                const labels = {
+                    classic:'', diagonal:'✖ Diagonal', windoku:'🪟 Windoku',
+                    antiknight:'♞ Anti-Knight', killer:'🔢 Killer', jigsaw:'🧩 Jigsaw',
+                    thermo:'🌡 Thermo', consecutive:'↔ Consec.', arrow:'➡ Arrow', evenodd:'⬡ Even/Odd'
+                };
                 const label = labels[gameState.variant] || '';
                 badge.textContent = label;
                 badge.style.display = label ? 'inline-block' : 'none';
             }
-            document.querySelectorAll('.mode-card[data-variant]').forEach(c => {
+            document.querySelectorAll('.variant-pill[data-variant]').forEach(c => {
                 c.addEventListener('click', updateVariantBadge);
             });
 
@@ -5448,71 +5753,184 @@
         });
 
     })();
-            // Draw variant overlays
+            // ── VARIANT OVERLAYS (drawn after numbers, before nothing) ──
             const variant = gameState.variant || 'classic';
 
+            // DIAGONAL
             if (variant === 'diagonal') {
                 ctx.save();
-                ctx.globalAlpha = 0.10;
-                ctx.fillStyle = '#d59020';
-                // Main diagonal (top-left to bottom-right)
-                for (let i = 0; i < 9; i++) {
-                    ctx.fillRect(i * cellSize, i * cellSize, cellSize, cellSize);
-                }
-                // Anti-diagonal (top-right to bottom-left)
-                for (let i = 0; i < 9; i++) {
-                    ctx.fillRect((8-i) * cellSize, i * cellSize, cellSize, cellSize);
-                }
+                ctx.globalAlpha = 0.10; ctx.fillStyle = '#d59020';
+                for (let i=0;i<9;i++) ctx.fillRect(i*cellSize, i*cellSize, cellSize, cellSize);
+                for (let i=0;i<9;i++) ctx.fillRect((8-i)*cellSize, i*cellSize, cellSize, cellSize);
                 ctx.globalAlpha = 1;
-                // Draw X lines
-                ctx.strokeStyle = 'rgba(213,144,32,0.35)';
-                ctx.lineWidth = 2;
-                ctx.setLineDash([4, 3]);
-                ctx.beginPath();
-                ctx.moveTo(0, 0); ctx.lineTo(size, size);
-                ctx.moveTo(size, 0); ctx.lineTo(0, size);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.restore();
+                ctx.strokeStyle = 'rgba(213,144,32,0.35)'; ctx.lineWidth = 2; ctx.setLineDash([4,3]);
+                ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(size,size);
+                ctx.moveTo(size,0); ctx.lineTo(0,size); ctx.stroke();
+                ctx.setLineDash([]); ctx.restore();
             }
 
+            // WINDOKU
             if (variant === 'windoku') {
-                ctx.save();
-                ctx.globalAlpha = 0.10;
-                ctx.fillStyle = '#7c6fcd';
-                const windows = [[1,1],[1,5],[5,1],[5,5]];
-                for (const [wr, wc] of windows) {
-                    for (let r = wr; r < wr+3; r++) {
-                        for (let c = wc; c < wc+3; c++) {
-                            ctx.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
-                        }
-                    }
-                }
+                ctx.save(); ctx.globalAlpha = 0.10; ctx.fillStyle = '#7c6fcd';
+                const wins = [[1,1],[1,5],[5,1],[5,5]];
+                for (const [wr,wc] of wins)
+                    for (let r=wr;r<wr+3;r++) for (let c=wc;c<wc+3;c++)
+                        ctx.fillRect(c*cellSize, r*cellSize, cellSize, cellSize);
                 ctx.globalAlpha = 1;
-                // Draw window borders
-                ctx.strokeStyle = 'rgba(124,111,205,0.5)';
-                ctx.lineWidth = 2;
-                for (const [wr, wc] of windows) {
-                    ctx.strokeRect(wc * cellSize + 1, wr * cellSize + 1, cellSize * 3 - 2, cellSize * 3 - 2);
+                ctx.strokeStyle = 'rgba(124,111,205,0.5)'; ctx.lineWidth = 2;
+                for (const [wr,wc] of wins)
+                    ctx.strokeRect(wc*cellSize+1, wr*cellSize+1, cellSize*3-2, cellSize*3-2);
+                ctx.restore();
+            }
+
+            // ANTI-KNIGHT — highlight forbidden cells for selected cell
+            if (variant === 'antiknight' && gameState.selectedCell) {
+                const {row:sr,col:sc} = gameState.selectedCell;
+                const km=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+                ctx.save(); ctx.fillStyle = 'rgba(255,80,80,0.14)';
+                for (const [dr,dc] of km) {
+                    const nr=sr+dr, nc=sc+dc;
+                    if (nr>=0&&nr<9&&nc>=0&&nc<9) ctx.fillRect(nc*cellSize, nr*cellSize, cellSize, cellSize);
                 }
                 ctx.restore();
             }
 
-            if (variant === 'antiknight') {
-                // Subtle chess-pattern hint on selected cell
-                if (gameState.selectedCell) {
-                    const { row: sr, col: sc } = gameState.selectedCell;
-                    const km = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-                    ctx.save();
-                    ctx.fillStyle = 'rgba(255,80,80,0.12)';
-                    for (const [dr, dc] of km) {
-                        const nr = sr+dr, nc = sc+dc;
-                        if (nr>=0&&nr<9&&nc>=0&&nc<9) {
-                            ctx.fillRect(nc*cellSize, nr*cellSize, cellSize, cellSize);
-                        }
-                    }
-                    ctx.restore();
+            // KILLER — cage borders + sum labels
+            if (variant === 'killer' && variantData.cages && variantData.killerAssigned) {
+                const asgn = variantData.killerAssigned;
+                ctx.save();
+                ctx.strokeStyle = 'rgba(213,144,32,0.75)'; ctx.lineWidth = 1.5; ctx.setLineDash([3,2]);
+                for (let r=0;r<9;r++) for (let c=0;c<9;c++) {
+                    const id = asgn[r][c]; const x=c*cellSize, y=r*cellSize;
+                    if (r===0||asgn[r-1][c]!==id) { ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+cellSize,y); ctx.stroke(); }
+                    if (r===8||asgn[r+1][c]!==id) { ctx.beginPath(); ctx.moveTo(x,y+cellSize); ctx.lineTo(x+cellSize,y+cellSize); ctx.stroke(); }
+                    if (c===0||asgn[r][c-1]!==id) { ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y+cellSize); ctx.stroke(); }
+                    if (c===8||asgn[r][c+1]!==id) { ctx.beginPath(); ctx.moveTo(x+cellSize,y); ctx.lineTo(x+cellSize,y+cellSize); ctx.stroke(); }
                 }
+                ctx.setLineDash([]);
+                // Sum label in top-left cell of each cage
+                ctx.font = `bold ${Math.max(8,cellSize*0.22)}px sans-serif`;
+                ctx.fillStyle = '#d59020'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+                for (const cage of variantData.cages) {
+                    const [tr,tc] = cage.cells.reduce(([mr,mc],[r,c])=>r<mr||(r===mr&&c<mc)?[r,c]:[mr,mc]);
+                    ctx.fillText(String(cage.sum), tc*cellSize+2, tr*cellSize+2);
+                }
+                ctx.restore();
+            }
+
+            // JIGSAW — color-coded region shading + thick region borders
+            if (variant === 'jigsaw' && variantData.regions) {
+                const reg = variantData.regions;
+                const regionFill = [
+                    'rgba(213,144,32,0.10)','rgba(74,158,255,0.10)','rgba(86,211,100,0.10)',
+                    'rgba(255,140,74,0.10)','rgba(180,100,220,0.10)','rgba(240,90,90,0.10)',
+                    'rgba(255,220,80,0.10)','rgba(80,200,180,0.10)','rgba(150,150,255,0.10)',
+                ];
+                const regionBorder = [
+                    'rgba(213,144,32,0.55)','rgba(74,158,255,0.55)','rgba(86,211,100,0.55)',
+                    'rgba(255,140,74,0.55)','rgba(180,100,220,0.55)','rgba(240,90,90,0.55)',
+                    'rgba(255,220,80,0.55)','rgba(80,200,180,0.55)','rgba(150,150,255,0.55)',
+                ];
+                ctx.save();
+                for (let r=0;r<9;r++) for (let c=0;c<9;c++) {
+                    ctx.fillStyle = regionFill[reg[r][c]%9];
+                    ctx.fillRect(c*cellSize, r*cellSize, cellSize, cellSize);
+                }
+                ctx.lineWidth = 2.5;
+                for (let r=0;r<9;r++) for (let c=0;c<9;c++) {
+                    const id = reg[r][c]; const x=c*cellSize, y=r*cellSize;
+                    ctx.strokeStyle = regionBorder[id%9];
+                    if (r===0||reg[r-1][c]!==id){ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+cellSize,y);ctx.stroke();}
+                    if (r===8||reg[r+1][c]!==id){ctx.beginPath();ctx.moveTo(x,y+cellSize);ctx.lineTo(x+cellSize,y+cellSize);ctx.stroke();}
+                    if (c===0||reg[r][c-1]!==id){ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y+cellSize);ctx.stroke();}
+                    if (c===8||reg[r][c+1]!==id){ctx.beginPath();ctx.moveTo(x+cellSize,y);ctx.lineTo(x+cellSize,y+cellSize);ctx.stroke();}
+                }
+                ctx.restore();
+            }
+
+            // THERMO — tubes + bulbs
+            if (variant === 'thermo' && variantData.thermos) {
+                ctx.save();
+                for (const thermo of variantData.thermos) {
+                    // Tube
+                    ctx.strokeStyle = 'rgba(190,190,190,0.38)';
+                    ctx.lineWidth = cellSize*0.32; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                    ctx.beginPath();
+                    for (let i=0;i<thermo.length;i++) {
+                        const [r,c]=thermo[i], x=c*cellSize+cellSize/2, y=r*cellSize+cellSize/2;
+                        i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+                    }
+                    ctx.stroke();
+                    // Bulb
+                    const [br,bc]=thermo[0];
+                    ctx.fillStyle='rgba(190,190,190,0.5)';
+                    ctx.beginPath();
+                    ctx.arc(bc*cellSize+cellSize/2, br*cellSize+cellSize/2, cellSize*0.3, 0, Math.PI*2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+
+            // CONSECUTIVE — white bars between marked adjacent pairs
+            if (variant === 'consecutive' && variantData.consecutivePairs) {
+                ctx.save(); ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                for (const p of variantData.consecutivePairs) {
+                    const mx=((p.c1+p.c2)/2+0.5)*cellSize, my=((p.r1+p.r2)/2+0.5)*cellSize;
+                    const bw = p.r1===p.r2 ? 4 : cellSize*0.5;
+                    const bh = p.r1===p.r2 ? cellSize*0.5 : 4;
+                    ctx.fillRect(mx-bw/2, my-bh/2, bw, bh);
+                }
+                ctx.restore();
+            }
+
+            // ARROW — lines from circle + arrowhead
+            if (variant === 'arrow' && variantData.arrows) {
+                ctx.save();
+                for (const arrow of variantData.arrows) {
+                    const [cr,cc]=arrow.circle;
+                    // Arrow shaft
+                    ctx.strokeStyle='rgba(180,180,180,0.48)';
+                    ctx.lineWidth=cellSize*0.11; ctx.lineCap='round';
+                    ctx.beginPath();
+                    ctx.moveTo(cc*cellSize+cellSize/2, cr*cellSize+cellSize/2);
+                    for (const [r,c] of arrow.cells) ctx.lineTo(c*cellSize+cellSize/2, r*cellSize+cellSize/2);
+                    ctx.stroke();
+                    // Circle
+                    ctx.strokeStyle='rgba(180,180,180,0.6)'; ctx.lineWidth=1.5;
+                    ctx.beginPath();
+                    ctx.arc(cc*cellSize+cellSize/2, cr*cellSize+cellSize/2, cellSize*0.34, 0, Math.PI*2);
+                    ctx.stroke();
+                    // Arrowhead at end
+                    const last=arrow.cells[arrow.cells.length-1];
+                    const prev=arrow.cells.length>1?arrow.cells[arrow.cells.length-2]:arrow.circle;
+                    const angle=Math.atan2(last[0]-prev[0], last[1]-prev[1]);
+                    const ax=last[1]*cellSize+cellSize/2, ay=last[0]*cellSize+cellSize/2;
+                    ctx.fillStyle='rgba(180,180,180,0.55)';
+                    ctx.beginPath();
+                    ctx.moveTo(ax+Math.cos(angle)*cellSize*0.2, ay+Math.sin(angle)*cellSize*0.2);
+                    ctx.lineTo(ax+Math.cos(angle-2.5)*cellSize*0.13, ay+Math.sin(angle-2.5)*cellSize*0.13);
+                    ctx.lineTo(ax+Math.cos(angle+2.5)*cellSize*0.13, ay+Math.sin(angle+2.5)*cellSize*0.13);
+                    ctx.closePath(); ctx.fill();
+                }
+                ctx.restore();
+            }
+
+            // EVEN-ODD — circle = even cells, square = odd cells
+            if (variant === 'evenodd' && variantData.evenOddMask) {
+                ctx.save();
+                for (let r=0;r<9;r++) for (let c=0;c<9;c++) {
+                    const m=variantData.evenOddMask[r][c]; if(!m) continue;
+                    const x=c*cellSize, y=r*cellSize, p=cellSize*0.1;
+                    ctx.fillStyle='rgba(140,140,160,0.22)';
+                    if (m==='even') {
+                        ctx.beginPath();
+                        ctx.arc(x+cellSize/2, y+cellSize/2, cellSize*0.38, 0, Math.PI*2);
+                        ctx.fill();
+                    } else {
+                        ctx.fillRect(x+p, y+p, cellSize-p*2, cellSize-p*2);
+                    }
+                }
+                ctx.restore();
             }
 
 
