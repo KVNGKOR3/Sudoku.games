@@ -4,8 +4,8 @@
  */
 
 const APP_VERSION   = 'v2.8.0';
-const CACHE_STATIC  = `sudoku-static-v2.8.0`;
-const CACHE_RUNTIME = `sudoku-runtime-v2.8.0`;
+const CACHE_STATIC  = `sudoku-static-v2.9.0`;
+const CACHE_RUNTIME = `sudoku-runtime-v2.9.0`;
 
 // Files to pre-cache on install (app shell)
 const PRECACHE_URLS = [
