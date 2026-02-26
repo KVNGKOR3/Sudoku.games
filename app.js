@@ -2870,39 +2870,25 @@
         }
 
         function showResultModal(winner, reason, ratingChange, oldRating) {
-            const modal = document.getElementById('result-modal');
-            const icon = document.getElementById('result-icon');
-            const title = document.getElementById('result-title');
-            const subtitle = document.getElementById('result-subtitle');
-            
-            document.getElementById('p1-final-score').textContent = gameState.scores.p1;
-            document.getElementById('p2-final-score').textContent = gameState.scores.p2;
-            document.getElementById('old-rating').textContent = oldRating.toFixed(1);
-            document.getElementById('new-rating').textContent = playerRating.toFixed(1);
-            
-            const deltaEl = document.getElementById('rating-delta');
-            const ratingChangeEl = document.getElementById('rating-change');
-            
-            if (ratingChange > 0) {
-                deltaEl.textContent = `(+${ratingChange.toFixed(1)})`;
-                ratingChangeEl.className = 'rating-change positive';
-            } else if (ratingChange < 0) {
-                deltaEl.textContent = `(${ratingChange.toFixed(1)})`;
-                ratingChangeEl.className = 'rating-change negative';
-            } else {
-                deltaEl.textContent = '(+0.0)';
-                ratingChangeEl.className = 'rating-change';
-            }
-            
+            const modal   = document.getElementById('result-modal');
+            const icon    = document.getElementById('result-icon');
+            const title   = document.getElementById('result-title');
+            const subtitle= document.getElementById('result-subtitle');
+            const grid    = document.getElementById('result-stats-grid');
+            const ratingWrap = document.getElementById('rating-change').parentElement;
+
             if (gameState.gameMode === 'solo') {
+                // ── Solo mode ──────────────────────────────────────────
                 const solved = reason === 'solved';
                 const elapsed = Math.round(gameState.dojoElapsed || 0);
                 const mins = Math.floor(elapsed / 60), secs = elapsed % 60;
                 const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-                icon.textContent = solved ? '🎉' : '🤔';
-                title.textContent = solved ? 'Puzzle Complete!' : 'Keep Going!';
 
-                // Update best time
+                icon.textContent  = solved ? '🎉' : '🤔';
+                title.textContent = solved ? 'Puzzle Complete!' : 'Keep Going!';
+                subtitle.textContent = solved ? `Solved in ${timeStr}` : `Time elapsed: ${timeStr}`;
+
+                // Best time tracking
                 const diff = gameState.difficulty || 'medium';
                 let bestTimeStr = '—';
                 if (solved) {
@@ -2915,64 +2901,96 @@
                         gamesPlayed: (prev.gamesPlayed || 0) + 1,
                     };
                     savePlayerData();
-                    if (isNewBest && prevBest) bestTimeStr = `🏅 New best! (was ${Math.floor(prevBest/60)}m ${prevBest%60}s)`;
-                    else if (isNewBest) bestTimeStr = '🏅 First solve!';
-                    else {
+                    if (isNewBest && prevBest) {
+                        const pb = prevBest;
+                        bestTimeStr = `🏅 New best! (was ${Math.floor(pb/60)}m ${pb%60}s)`;
+                    } else if (isNewBest) {
+                        bestTimeStr = '🏅 First solve!';
+                    } else {
                         const pb = playerData.soloStats[diff].bestTime;
                         bestTimeStr = `Best: ${Math.floor(pb/60)}m ${pb%60}s`;
                     }
                 }
 
+                // Build compact 2-column stats grid
                 const maxHints = { easy: 5, medium: 3, hard: 1, extreme: 0 }[diff] ?? 3;
-                const hintsLeft = maxHints - (gameState.hintsUsed || 0);
+                grid.style.display = 'grid';
+                grid.style.gridTemplateColumns = '1fr 1fr';
+                grid.innerHTML = `
+                    <div class="result-stat" style="border-color:var(--border-color);">
+                        <div class="result-stat-value" style="font-size:1.3rem;">${timeStr}</div>
+                        <div class="result-stat-label">Time</div>
+                    </div>
+                    <div class="result-stat" style="border-color:var(--border-color);">
+                        <div class="result-stat-value" style="font-size:1.3rem;">${gameState.wrongMoves ?? 0}</div>
+                        <div class="result-stat-label">Mistakes</div>
+                    </div>
+                    <div class="result-stat" style="border-color:var(--border-color);">
+                        <div class="result-stat-value" style="font-size:1.3rem;">${gameState.hintsUsed || 0}</div>
+                        <div class="result-stat-label">Hints Used</div>
+                    </div>
+                    <div class="result-stat" style="border-color:var(--border-color);">
+                        <div class="result-stat-value" style="font-size:0.85rem;color:var(--accent-orange);">${bestTimeStr}</div>
+                        <div class="result-stat-label">Personal Best</div>
+                    </div>`;
 
-                subtitle.textContent = solved ? `Solved in ${timeStr}` : `Time elapsed: ${timeStr}`;
+                ratingWrap.style.display = 'none';
 
-                // Inject rich stats row into result modal body
-                const pvpEl = document.getElementById('pvp-summary-stats');
-                if (pvpEl) pvpEl.style.display = 'none';
-                const statsEl = document.getElementById('solo-summary-stats');
-                if (statsEl) {
-                    statsEl.style.display = 'grid';
-                    document.getElementById('sum-time').textContent    = timeStr;
-                    document.getElementById('sum-mistakes').textContent = gameState.wrongMoves ?? 0;
-                    document.getElementById('sum-hints').textContent   = gameState.hintsUsed || 0;
-                    document.getElementById('sum-best').textContent    = bestTimeStr;
-                }
-
-                ratingChangeEl.parentElement.style.display = 'none';
                 if (gameState.dojoTechniqueId && solved) {
                     completeDojoPuzzle();
                 }
+
             } else {
-                // PvP mode — show cell grid, hide solo summary
-                const sEl = document.getElementById('solo-summary-stats');
-                const pEl = document.getElementById('pvp-summary-stats');
-                if (sEl) sEl.style.display = 'none';
-                if (pEl) pEl.style.display = 'grid';
+                // ── PvP mode ───────────────────────────────────────────
+                grid.style.display = 'grid';
+                grid.style.gridTemplateColumns = '1fr 1fr';
+                grid.innerHTML = `
+                    <div class="result-stat p1">
+                        <div class="result-stat-value">${gameState.scores.p1}</div>
+                        <div class="result-stat-label">Your Cells</div>
+                    </div>
+                    <div class="result-stat p2">
+                        <div class="result-stat-value">${gameState.scores.p2}</div>
+                        <div class="result-stat-label">Opponent</div>
+                    </div>`;
+
+                // Rating display
+                document.getElementById('old-rating').textContent = oldRating.toFixed(1);
+                document.getElementById('new-rating').textContent = playerRating.toFixed(1);
+                const deltaEl = document.getElementById('rating-delta');
+                if (ratingChange > 0) {
+                    deltaEl.textContent = `(+${ratingChange.toFixed(1)})`;
+                    document.getElementById('rating-change').className = 'rating-change positive';
+                } else if (ratingChange < 0) {
+                    deltaEl.textContent = `(${ratingChange.toFixed(1)})`;
+                    document.getElementById('rating-change').className = 'rating-change negative';
+                } else {
+                    deltaEl.textContent = '(+0.0)';
+                    document.getElementById('rating-change').className = 'rating-change';
+                }
+                ratingWrap.style.display = 'block';
 
                 if (winner === 1) {
-                    icon.textContent = '🏆';
+                    icon.textContent  = '🏆';
                     title.textContent = 'You Win!';
                     subtitle.textContent = reason === 'resign'  ? 'Opponent resigned' :
                                           reason === 'timeout' ? 'Opponent ran out of time' :
                                           reason === 'time'    ? 'More time remaining' :
                                           'Most cells claimed';
                 } else if (winner === 2) {
-                    icon.textContent = '😔';
+                    icon.textContent  = '😔';
                     title.textContent = 'You Lose';
                     subtitle.textContent = reason === 'resign'  ? 'You resigned' :
                                           reason === 'timeout' ? 'You ran out of time' :
                                           reason === 'time'    ? 'Opponent had more time' :
                                           'Opponent claimed more cells';
                 } else {
-                    icon.textContent = '🤝';
+                    icon.textContent  = '🤝';
                     title.textContent = 'Draw!';
                     subtitle.textContent = 'Equal cells claimed';
                 }
-                ratingChangeEl.parentElement.style.display = 'block';
             }
-            
+
             modal.classList.add('active');
         }
 
