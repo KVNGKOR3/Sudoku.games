@@ -786,42 +786,15 @@ create policy "public rw" on sudoku_rooms
 
     <!-- Game Over Modal -->
     <div class="modal-overlay" id="result-modal">
-        <div class="modal">
+        <div class="modal" style="display:flex;flex-direction:column;max-height:90vh;">
             <div class="modal-header">
                 <div class="modal-icon" id="result-icon">🏆</div>
                 <div class="modal-title" id="result-title">You Win!</div>
                 <div class="modal-subtitle" id="result-subtitle">Most cells claimed</div>
             </div>
-            <div class="modal-body">
-                <!-- Solo summary grid (hidden in PvP mode) -->
-                <div class="result-stats" id="solo-summary-stats" style="display:none;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-                    <div class="result-stat" style="border-color:var(--border-color);">
-                        <div class="result-stat-value" id="sum-time" style="font-size:1.2rem;">—</div>
-                        <div class="result-stat-label">Time</div>
-                    </div>
-                    <div class="result-stat" style="border-color:var(--border-color);">
-                        <div class="result-stat-value" id="sum-mistakes" style="font-size:1.2rem;">0</div>
-                        <div class="result-stat-label">Mistakes</div>
-                    </div>
-                    <div class="result-stat" style="border-color:var(--border-color);">
-                        <div class="result-stat-value" id="sum-hints" style="font-size:1.2rem;">0</div>
-                        <div class="result-stat-label">Hints Used</div>
-                    </div>
-                    <div class="result-stat" style="border-color:var(--border-color);grid-column:1/-1;">
-                        <div class="result-stat-value" id="sum-best" style="font-size:0.9rem;color:var(--accent-orange);">—</div>
-                        <div class="result-stat-label">Personal Best</div>
-                    </div>
-                </div>
-                <div class="result-stats" id="pvp-summary-stats">
-                    <div class="result-stat p1">
-                        <div class="result-stat-value" id="p1-final-score">0</div>
-                        <div class="result-stat-label">Your Cells</div>
-                    </div>
-                    <div class="result-stat p2">
-                        <div class="result-stat-value" id="p2-final-score">0</div>
-                        <div class="result-stat-label">Opponent</div>
-                    </div>
-                </div>
+            <div class="modal-body" style="overflow-y:auto;flex:1;">
+                <!-- Unified stats grid — JS populates and shows this -->
+                <div id="result-stats-grid" style="display:none;gap:10px;margin-bottom:12px;"></div>
                 <div class="rating-display">
                     <div class="rating-change" id="rating-change">
                         <span id="old-rating">2.0</span> → <span id="new-rating">2.1</span>
