@@ -171,6 +171,7 @@
 
         let playerRating = CONFIG.STARTING_RATING;
         let _activeLbTab = 'bullet'; // tracks which TC leaderboard tab is active
+        let _lastCorrectMoveTime = 0;  // timestamp of last correct move (for speed bonus)
 
         // ============================================
         // PLAYER DATA & STORAGE
@@ -1286,8 +1287,11 @@
                 const val = gameState.solution[hr][hc];
                 gameState.puzzle[hr][hc] = val;
                 gameState.claims[hr][hc] = 1;
-                gameState.scores.p1++;
+                // Hint awards base 200 pts (no speed bonus since it's assisted)
+                gameState.scores.p1 += 200;
+                _lastCorrectMoveTime = Date.now(); // reset speed timer after hint
                 gameState.hintsUsed++;
+                spawnFloatingScore(hr, hc, '+200', '#d59020');
                 updateHintDisplay();
                 updateRemainingCounts();
                 updateScores();
@@ -1693,6 +1697,7 @@
             gameState.p2Time = gameState.gameMode === 'solo' ? Infinity : (gameState.timeLimit || 600);
             gameState.dojoElapsed = 0;
             gameState.scores = { p1: 0, p2: 0 };
+            _lastCorrectMoveTime = Date.now();
             gameState.currentPlayer = 1;
             gameState.isRunning = true;
             gameState.isPaused = false;
@@ -2075,8 +2080,17 @@
         }
 
         function updateScores() {
-            document.getElementById('p1-score').textContent = gameState.scores.p1;
-            document.getElementById('p2-score').textContent = gameState.scores.p2;
+            const fmt = n => n.toLocaleString();
+            const p1El = document.getElementById('p1-score');
+            const p2El = document.getElementById('p2-score');
+            if (p1El) {
+                if (gameState.gameMode === 'solo') {
+                    p1El.textContent = 'Score: ' + fmt(gameState.scores.p1);
+                } else {
+                    p1El.textContent = fmt(gameState.scores.p1);
+                }
+            }
+            if (p2El) p2El.textContent = fmt(gameState.scores.p2);
         }
 
         function updateTurnIndicator() {
@@ -2651,13 +2665,13 @@
                 // Play error sound
                 playSound('error');
 
-                // If 3 wrong moves → lose 1 point (if any) and show warning
+                // 3 wrong moves → deduct 500 points (if any) and show warning
                 if (gameState.wrongMoves >= gameState.maxWrongMoves) {
-                    if (gameState.scores.p1 > 0) {
-                        gameState.scores.p1--;
-                        updateScores();
-                        spawnFloatingScore(row, col, '-1', '#f05a5a');
-                    }
+                    const deduct = 500;
+                    gameState.scores.p1 = Math.max(0, gameState.scores.p1 - deduct);
+                    _lastCorrectMoveTime = 0; // reset speed bonus as punishment
+                    updateScores();
+                    spawnFloatingScore(row, col, '-500', '#f05a5a');
                     gameState.wrongMoves = 0; // reset counter after penalty
                 }
 
@@ -2675,10 +2689,42 @@
             
             const player = gameState.gameMode === 'passplay' ? gameState.currentPlayer : 1;
             
+            // ── Speed-based scoring (mirrors reference app) ──────────────
+            // Base: 200 pts per cell. Speed bonus: up to +300 if placed in <5s,
+            // scaling down to 0 bonus after 30s since last correct move.
+            let pointsEarned = 200;
+            if (gameState.gameMode === 'solo') {
+                const now_ = Date.now();
+                const secSinceLast = (now_ - _lastCorrectMoveTime) / 1000;
+                const speedBonus = Math.round(Math.max(0, 300 * (1 - secSinceLast / 30)));
+                pointsEarned = 200 + speedBonus;
+                _lastCorrectMoveTime = now_;
+            }
+            gameState.scores.p1 += pointsEarned;
+
             // Clear pencil marks from this cell
             if (gameState.pencilMarks && gameState.pencilMarks[row] && gameState.pencilMarks[row][col]) {
                 gameState.pencilMarks[row][col].clear();
             }
+
+            // ── Auto-clear pencil marks of the same number in row/col/box ──
+            const BS_ = gameState.boxSize || 3;
+            const N_ = gameState.gridSize || 9;
+            const boxR = Math.floor(row / BS_) * BS_;
+            const boxC = Math.floor(col / BS_) * BS_;
+            for (let i = 0; i < N_; i++) {
+                // Same row
+                if (gameState.pencilMarks[row] && gameState.pencilMarks[row][i])
+                    gameState.pencilMarks[row][i].delete(number);
+                // Same col
+                if (gameState.pencilMarks[i] && gameState.pencilMarks[i][col])
+                    gameState.pencilMarks[i][col].delete(number);
+            }
+            // Same box
+            for (let br = boxR; br < boxR + BS_; br++)
+                for (let bc = boxC; bc < boxC + BS_; bc++)
+                    if (gameState.pencilMarks[br] && gameState.pencilMarks[br][bc])
+                        gameState.pencilMarks[br][bc].delete(number);
 
             // Highlight the placed number
             gameState.highlightNumber = number;
@@ -2686,8 +2732,9 @@
             claimCell(row, col, number, player);
             updateRemainingCounts();
 
-            // Spawn +1 float
-            spawnFloatingScore(row, col, '+1', player === 1 ? '#4a9eff' : '#ff8c4a');
+            // Spawn points float
+            const floatLabel = pointsEarned > 0 ? '+' + pointsEarned.toLocaleString() : '+200';
+            spawnFloatingScore(row, col, floatLabel, player === 1 ? '#4a9eff' : '#ff8c4a');
             
             if (gameState.gameMode === 'passplay') {
                 gameState.currentPlayer = gameState.currentPlayer === 1 ? 2 : 1;
@@ -2730,7 +2777,8 @@
             if (!el) return;
             const strikes = '●'.repeat(gameState.wrongMoves) + '○'.repeat(gameState.maxWrongMoves - gameState.wrongMoves);
             el.textContent = strikes;
-            el.style.color = gameState.wrongMoves >= 2 ? '#f05a5a' : gameState.wrongMoves === 1 ? '#f5a623' : '#5a5a7a';
+            // Turn orange at first mistake, red at second+ (matches reference app)
+            el.style.color = gameState.wrongMoves >= 2 ? '#f05a5a' : gameState.wrongMoves >= 1 ? '#f5a623' : '#5a5a7a';
         }
 
         function spawnFloatingScore(row, col, text, color) {
@@ -3020,9 +3068,14 @@
 
                 // Build compact 2-column stats grid
                 const maxHints = { easy: 5, medium: 3, hard: 1, extreme: 0 }[diff] ?? 3;
+                const finalScore = gameState.scores.p1;
                 grid.style.display = 'grid';
                 grid.style.gridTemplateColumns = '1fr 1fr';
                 grid.innerHTML = `
+                    <div class="result-stat" style="border-color:var(--border-color);grid-column:1/-1;">
+                        <div class="result-stat-value" style="font-size:2rem;color:var(--accent-blue);">${finalScore.toLocaleString()}</div>
+                        <div class="result-stat-label">Score</div>
+                    </div>
                     <div class="result-stat" style="border-color:var(--border-color);">
                         <div class="result-stat-value" style="font-size:1.3rem;">${timeStr}</div>
                         <div class="result-stat-label">Time</div>
@@ -3381,6 +3434,7 @@
             gameState.timeRemaining = Infinity;
             gameState.dojoElapsed   = 0;
             gameState.scores        = { p1: 0, p2: 0 };
+            _lastCorrectMoveTime    = Date.now();
             gameState.currentPlayer = 1;
             gameState.isRunning     = true;
             gameState.isPaused      = false;
