@@ -674,42 +674,96 @@
         let variantData = {};
 
         // ── KILLER ──────────────────────────────────────────────────
-        function generateKillerCages(solution) {
-            const assigned = Array(9).fill(null).map(() => Array(9).fill(-1));
-            const cages = [];
-            const order = [];
-            for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) order.push([r,c]);
-            shuffle(order);
-            let cageId = 0;
-            for (const [sr, sc] of order) {
-                if (assigned[sr][sc] !== -1) continue;
-                const maxSize = 2 + Math.floor(Math.random() * 4); // 2-5
-                const cells = [[sr, sc]];
-                assigned[sr][sc] = cageId;
-                const frontier = [[sr, sc]];
-                while (cells.length < maxSize && frontier.length) {
-                    const fi = Math.floor(Math.random() * frontier.length);
-                    const [fr, fc] = frontier[fi];
-                    const nbrs = [[fr-1,fc],[fr+1,fc],[fr,fc-1],[fr,fc+1]]
-                        .filter(([nr,nc]) => nr>=0&&nr<9&&nc>=0&&nc<9&&assigned[nr][nc]===-1);
-                    if (!nbrs.length) { frontier.splice(fi,1); continue; }
-                    const [nr,nc] = nbrs[Math.floor(Math.random()*nbrs.length)];
-                    assigned[nr][nc] = cageId;
-                    cells.push([nr,nc]);
-                    frontier.push([nr,nc]);
+        function generateKillerCages(solution, difficulty) {
+            // Proper Killer Sudoku cage generation:
+            //   • No single-cell cages (they trivially reveal a digit)
+            //   • 2–5 cells per cage, biased by difficulty
+            //   • Every cell belongs to exactly one cage
+            //   • Retry up to 8 times for a clean distribution
+            //
+            // Difficulty affects cage size distribution:
+            //   easy    → mostly size-2 cages (easier to deduce)
+            //   medium  → mix of size-2 and size-3
+            //   hard    → larger cages (size-3 to size-5)
+            //   extreme → largest cages (size-4 to size-5, fewer cages, harder to crack)
+            const N = 9;
+            const diff = difficulty || gameState.difficulty || 'medium';
+            // cumulative probability thresholds for sizes 2, 3, 4, 5
+            const sizeWeights = {
+                easy:    [0.60, 0.90, 0.98, 1.00],
+                medium:  [0.40, 0.75, 0.92, 1.00],
+                hard:    [0.15, 0.45, 0.78, 1.00],
+                extreme: [0.05, 0.20, 0.55, 1.00],
+            };
+            const weights = sizeWeights[diff] || sizeWeights.medium;
+
+            function tryBuild() {
+                const assigned = Array(N).fill(null).map(() => Array(N).fill(-1));
+                const cages = [];
+                const order = [];
+                for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) order.push([r, c]);
+                shuffle(order);
+
+                let cageId = 0;
+                for (const [sr, sc] of order) {
+                    if (assigned[sr][sc] !== -1) continue;
+
+                    // Weighted target size varies by difficulty
+                    const rand = Math.random();
+                    const targetSize = rand < weights[0] ? 2 : rand < weights[1] ? 3 : rand < weights[2] ? 4 : 5;
+
+                    const cells = [[sr, sc]];
+                    assigned[sr][sc] = cageId;
+                    const frontier = [[sr, sc]];
+
+                    while (cells.length < targetSize && frontier.length) {
+                        const fi = Math.floor(Math.random() * frontier.length);
+                        const [fr, fc] = frontier[fi];
+                        const freeNbrs = [[fr-1,fc],[fr+1,fc],[fr,fc-1],[fr,fc+1]]
+                            .filter(([nr,nc]) => nr >= 0 && nr < N && nc >= 0 && nc < N && assigned[nr][nc] === -1);
+                        if (!freeNbrs.length) { frontier.splice(fi, 1); continue; }
+                        const [nr, nc] = freeNbrs[Math.floor(Math.random() * freeNbrs.length)];
+                        assigned[nr][nc] = cageId;
+                        cells.push([nr, nc]);
+                        frontier.push([nr, nc]);
+                    }
+
+                    const sum = cells.reduce((s, [r, c]) => s + solution[r][c], 0);
+                    cages.push({ id: cageId, cells, sum });
+                    cageId++;
                 }
-                const sum = cells.reduce((s,[r,c]) => s + solution[r][c], 0);
-                cages.push({ id: cageId, cells, sum });
-                cageId++;
-            }
-            // mop up any stray -1 cells
-            for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
-                if (assigned[r][c] === -1) {
-                    cages.push({ id: cageId, cells: [[r,c]], sum: solution[r][c] });
-                    assigned[r][c] = cageId++;
+
+                // Mop-up: merge any leftover isolated cells into an adjacent cage
+                for (let r = 0; r < N; r++) {
+                    for (let c = 0; c < N; c++) {
+                        if (assigned[r][c] !== -1) continue;
+                        const adj = [[r-1,c],[r+1,c],[r,c-1],[r,c+1]]
+                            .find(([nr,nc]) => nr >= 0 && nr < N && nc >= 0 && nc < N && assigned[nr][nc] !== -1);
+                        if (adj) {
+                            const tid = assigned[adj[0]][adj[1]];
+                            assigned[r][c] = tid;
+                            const cage = cages.find(cg => cg.id === tid);
+                            if (cage) { cage.cells.push([r, c]); cage.sum += solution[r][c]; }
+                        } else {
+                            // Last resort single-cell cage
+                            cages.push({ id: cageId, cells: [[r, c]], sum: solution[r][c] });
+                            assigned[r][c] = cageId++;
+                        }
+                    }
                 }
+
+                // Reject layout if more than 2 single-cell cages exist
+                const singleCount = cages.filter(cg => cg.cells.length === 1).length;
+                if (singleCount > 2) return null;
+                return { cages, assigned };
             }
-            return { cages, assigned };
+
+            for (let attempt = 0; attempt < 8; attempt++) {
+                const result = tryBuild();
+                if (result) return result;
+            }
+            // Ultimate fallback
+            return tryBuild() || tryBuild();
         }
 
         function killerValidForCell(grid, row, col, num, cages, assigned) {
@@ -1600,9 +1654,12 @@
             const sol = gameState.solution;
             const vt = gameState.variant || 'classic';
             if (vt === 'killer') {
-                const k = generateKillerCages(sol);
+                const k = generateKillerCages(sol, gameState.difficulty);
                 variantData.cages = k.cages;
                 variantData.killerAssigned = k.assigned;
+                // Killer Sudoku has NO pre-filled digits — the only information
+                // is the cage sums. Blank the entire puzzle grid.
+                gameState.puzzle = Array(9).fill(null).map(() => Array(9).fill(0));
             } else if (vt === 'jigsaw') {
                 // Reuse the regions that the puzzle was solved against —
                 // do NOT call getJigsawRegions() again here.
@@ -1620,6 +1677,9 @@
             gameState.claims = Array(9).fill(null).map(() => Array(9).fill(0));
             gameState.pencilMarks = Array(9).fill(null).map(() => Array(9).fill(null).map(() => new Set()));
             
+            // Mark pre-filled cells as given (claim = -1).
+            // For Killer Sudoku the puzzle is blank so this loop does nothing,
+            // which is correct — all cells must be filled by the player.
             for (let r = 0; r < 9; r++) {
                 for (let c = 0; c < 9; c++) {
                     if (gameState.puzzle[r][c] !== 0) {
@@ -2362,20 +2422,36 @@
             if (variant === 'killer' && variantData.cages && variantData.killerAssigned) {
                 const asgn = variantData.killerAssigned;
                 ctx.save();
-                ctx.strokeStyle = 'rgba(213,144,32,0.75)'; ctx.lineWidth = 1.5; ctx.setLineDash([3,2]);
+                // Draw dashed cage borders (inset by 2px so lines don't overlap grid lines)
+                ctx.strokeStyle = 'rgba(213,144,32,0.85)'; ctx.lineWidth = 1.5; ctx.setLineDash([4,3]);
+                const pad = 2;
                 for (let r=0;r<9;r++) for (let c=0;c<9;c++) {
                     const id=asgn[r][c], x=c*cellSize, y=r*cellSize;
-                    if (r===0||asgn[r-1][c]!==id){ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+cellSize,y);ctx.stroke();}
-                    if (r===8||asgn[r+1][c]!==id){ctx.beginPath();ctx.moveTo(x,y+cellSize);ctx.lineTo(x+cellSize,y+cellSize);ctx.stroke();}
-                    if (c===0||asgn[r][c-1]!==id){ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y+cellSize);ctx.stroke();}
-                    if (c===8||asgn[r][c+1]!==id){ctx.beginPath();ctx.moveTo(x+cellSize,y);ctx.lineTo(x+cellSize,y+cellSize);ctx.stroke();}
+                    if (r===0||asgn[r-1][c]!==id){ctx.beginPath();ctx.moveTo(x+pad,y+pad);ctx.lineTo(x+cellSize-pad,y+pad);ctx.stroke();}
+                    if (r===8||asgn[r+1][c]!==id){ctx.beginPath();ctx.moveTo(x+pad,y+cellSize-pad);ctx.lineTo(x+cellSize-pad,y+cellSize-pad);ctx.stroke();}
+                    if (c===0||asgn[r][c-1]!==id){ctx.beginPath();ctx.moveTo(x+pad,y+pad);ctx.lineTo(x+pad,y+cellSize-pad);ctx.stroke();}
+                    if (c===8||asgn[r][c+1]!==id){ctx.beginPath();ctx.moveTo(x+cellSize-pad,y+pad);ctx.lineTo(x+cellSize-pad,y+cellSize-pad);ctx.stroke();}
                 }
                 ctx.setLineDash([]);
-                ctx.font = `bold ${Math.max(8,cellSize*0.22)}px sans-serif`;
-                ctx.fillStyle = '#d59020'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+                // Draw cage sum in top-left cell of each cage, with a subtle pill background
+                const sumFontSize = Math.max(9, Math.round(cellSize * 0.24));
+                ctx.font = `bold ${sumFontSize}px -apple-system,sans-serif`;
+                ctx.textAlign = 'left'; ctx.textBaseline = 'top';
                 for (const cage of variantData.cages) {
-                    const [tr,tc] = cage.cells.reduce(([mr,mc],[r,c])=>r<mr||(r===mr&&c<mc)?[r,c]:[mr,mc]);
-                    ctx.fillText(String(cage.sum), tc*cellSize+2, tr*cellSize+2);
+                    // Top-left-most cell (lowest row, then lowest col)
+                    const [tr, tc] = cage.cells.reduce(([mr,mc],[r,c])=>r<mr||(r===mr&&c<mc)?[r,c]:[mr,mc]);
+                    const label = String(cage.sum);
+                    const lx = tc * cellSize + 4;
+                    const ly = tr * cellSize + 3;
+                    // Tiny background pill for legibility
+                    const tw = ctx.measureText(label).width;
+                    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+                    ctx.beginPath();
+                    const rr2 = 2;
+                    ctx.roundRect(lx - 1, ly - 1, tw + 4, sumFontSize + 2, rr2);
+                    ctx.fill();
+                    ctx.fillStyle = '#f5c842';
+                    ctx.fillText(label, lx, ly);
                 }
                 ctx.restore();
             }
