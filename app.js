@@ -1722,19 +1722,19 @@
                     display:flex;align-items:center;gap:12px;
                 `;
                 btn.innerHTML = done
-                    ? \`<span style="font-size:1.4rem;">✅</span>
+                    ? `<span style="font-size:1.4rem;">✅</span>
                        <div>
                          <div>Daily Challenge — Done!</div>
                          <div style="font-size:0.75rem;color:#666;margin-top:2px;">\${dcResult?.score?.toLocaleString?.() || ''} pts · Come back tomorrow</div>
-                       </div>\`
-                    : \`<span style="font-size:1.4rem;">📅</span>
+                       </div>`
+                    : `<span style="font-size:1.4rem;">📅</span>
                        <div>
                          <div>Daily Challenge</div>
                          <div style="font-size:0.75rem;color:#777;margin-top:2px;">New puzzle every day · Hard difficulty</div>
                        </div>
                        <div style="margin-left:auto;background:#d59020;color:#161512;
                                    font-size:0.65rem;font-weight:800;padding:3px 7px;
-                                   border-radius:4px;">NEW</div>\`;
+                                   border-radius:4px;">NEW</div>`;
 
                 btn.addEventListener('click', () => {
                     if (!done) launchDailyChallenge();
@@ -3248,7 +3248,7 @@
                 const isDaily = gameState.isDailyChallenge;
                 icon.textContent  = solved ? (isDaily ? '📅' : '🎉') : '🤔';
                 title.textContent = solved ? (isDaily ? 'Daily Challenge Complete!' : 'Puzzle Complete!') : 'Keep Going!';
-                subtitle.textContent = solved ? \`Solved in \${timeStr}\` : \`Time elapsed: \${timeStr}\`;
+                subtitle.textContent = solved ? `Solved in \${timeStr}` : `Time elapsed: \${timeStr}`;
 
                 // Best time tracking
                 const diff = gameState.difficulty || 'medium';
@@ -3314,7 +3314,7 @@
                     // Update daily challenge label in lobby if visible
                     const dcBtn = document.getElementById('daily-challenge-lobby-btn');
                     if (dcBtn) {
-                        dcBtn.innerHTML = dcBtn.innerHTML.replace('Play Today's Challenge', '✅ Done for today!');
+                        dcBtn.innerHTML = dcBtn.innerHTML.replace("Play Today's Challenge", '✅ Done for today!');
                         dcBtn.style.opacity = '0.6';
                     }
                 }
