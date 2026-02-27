@@ -1121,6 +1121,7 @@
                 savePlayerData();
                 // Redraw board if game is running
                 if (gameState.isRunning || gameState.claims.length > 0) {
+                    markGridDirty();
                     drawGrid();
                 }
             });
@@ -1236,6 +1237,7 @@
                 updateRemainingCounts();
             updateHintDisplay();
                 updateScores();
+                markGridDirty();
                 drawGrid();
                 checkGameEnd();
                 showToast(`💡 Hint used (${gameState.hintsUsed}/${maxHints})`, 1800);
@@ -1319,6 +1321,7 @@
                     for (let c = 0; c < _GS; c++) {
                         if (gameState.claims[r][c] === 0) {
                             gameState.selectedCell = { row: r, col: c };
+                            markGridDirty();
                             drawGrid();
                             break outer9;
                         }
@@ -1339,6 +1342,7 @@
                 } else {
                     cell.add(num);
                 }
+                markGridDirty();
                 drawGrid();
             } else {
                 // Pen mode: make the move
@@ -1358,6 +1362,7 @@
             if (gameState.pencilMarks && gameState.pencilMarks[row] && gameState.pencilMarks[row][col]) {
                 gameState.pencilMarks[row][col].clear();
             }
+            markGridDirty();
             drawGrid();
             updateRemainingCounts();
         }
@@ -1565,7 +1570,8 @@
             ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
             
             if (gameState.isRunning || gameState.claims.length > 0) {
-                drawGrid();
+                markGridDirty();
+                markGridDirty(); drawGrid();
             }
         }
 
@@ -1673,6 +1679,8 @@
             gameScreen.classList.add('active');
             
             resizeCanvas();
+            _gridDirty = true;
+            markGridDirty();
             drawGrid();
             updateRemainingCounts();
             
@@ -1808,6 +1816,8 @@
             lobby.style.display = 'none';
             gameScreen.classList.add('active');
             resizeCanvas();
+            _gridDirty = true;
+            markGridDirty();
             drawGrid();
             updateRemainingCounts();
             requestAnimationFrame(gameLoop);
@@ -1921,6 +1931,15 @@
         // ============================================
         // GAME LOOP
         // ============================================
+
+        // Dirty flag — only redraw canvas when board state has changed,
+        // OR when a continuous animation (claim pop, error flash, pulse) is active.
+        let _gridDirty = false;
+        function markGridDirty() { _gridDirty = true; }
+
+        // Cache last displayed timer strings to avoid DOM writes every rAF tick
+        let _lastTimerStr = { p1: '', p2: '' };
+
         function gameLoop() {
             if (!gameState.isRunning) return;
             
@@ -1930,9 +1949,7 @@
             
             if (!gameState.isPaused) {
                 if (gameState.gameMode === 'solo') {
-                    // Solo/puzzle mode — untimed, just track elapsed for display
                     gameState.dojoElapsed = (gameState.dojoElapsed || 0) + delta;
-                    // No timeout for solo mode
                 } else if (gameState.gameMode === 'simultaneous') {
                     gameState.timeRemaining -= delta;
                     gameState.p1Time = gameState.timeRemaining;
@@ -1957,32 +1974,43 @@
             }
             
             updateTimerDisplay();
-            drawGrid();
+
+            // Only repaint when something actually changed
+            const hasActiveAnim = gameState.animatingCells.size > 0;
+            const hasErrorFlash = !!gameState.errorCell;
+            const hasPulse      = !!gameState.lastMoveCell;
+            if (_gridDirty || hasActiveAnim || hasErrorFlash || hasPulse) {
+                markGridDirty();
+                drawGrid();
+                _gridDirty = false;
+            }
             
             requestAnimationFrame(gameLoop);
         }
 
         function updateTimerDisplay() {
-            const formatTime = (seconds) => {
-                const mins = Math.floor(Math.abs(seconds) / 60);
-                const secs = Math.floor(Math.abs(seconds) % 60);
-                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            const formatTime = (s) => {
+                const m = Math.floor(Math.abs(s) / 60);
+                const sec = Math.floor(Math.abs(s) % 60);
+                return m + ':' + (sec < 10 ? '0' : '') + sec;
             };
+            const p1El = document.getElementById('p1-timer');
+            const p2El = document.getElementById('p2-timer');
+            if (!p1El) return;
 
             if (gameState.gameMode === 'solo') {
-                // Show elapsed time counting up
-                const elapsed = gameState.dojoElapsed || 0;
-                document.getElementById('p1-timer').textContent = formatTime(elapsed);
-                document.getElementById('p2-timer').textContent = '';
+                const t = formatTime(gameState.dojoElapsed || 0);
+                if (t !== _lastTimerStr.p1) { p1El.textContent = t; _lastTimerStr.p1 = t; }
+                if (_lastTimerStr.p2 !== '') { p2El.textContent = ''; _lastTimerStr.p2 = ''; }
             } else {
-                document.getElementById('p1-timer').textContent = formatTime(gameState.p1Time);
-                document.getElementById('p2-timer').textContent = formatTime(gameState.p2Time);
-                
-                // Low time warning
-                [document.getElementById('p1-timer'), document.getElementById('p2-timer')].forEach(el => {
-                    const time = el.id === 'p1-timer' ? gameState.p1Time : gameState.p2Time;
-                    el.classList.toggle('low', time < 30);
-                });
+                const t1 = formatTime(gameState.p1Time);
+                const t2 = formatTime(gameState.p2Time);
+                if (t1 !== _lastTimerStr.p1) { p1El.textContent = t1; _lastTimerStr.p1 = t1; }
+                if (t2 !== _lastTimerStr.p2) { p2El.textContent = t2; _lastTimerStr.p2 = t2; }
+                const low1 = gameState.p1Time < 30;
+                const low2 = gameState.p2Time < 30;
+                p1El.classList.toggle('low', low1);
+                p2El.classList.toggle('low', low2);
             }
         }
 
@@ -2019,10 +2047,35 @@
             const cellSize = size / N;
             const now = Date.now();
             
-            // Get current theme
-            const currentTheme = CONFIG.THEMES[playerData.settings.boardTheme] || CONFIG.THEMES.classic;
+            // ── Hoist all per-frame constants outside the cell loop ───────────
+            const currentTheme   = CONFIG.THEMES[playerData.settings.boardTheme] || CONFIG.THEMES.classic;
             const useCheckerboard = currentTheme.checkerboard !== false;
-            
+            const cbMode         = playerData.settings.colorBlind || false;
+            const isDarkTheme    = (currentTheme.dark === '#1a1a1a' || currentTheme.bgFill === '#161830');
+            const givenCol       = currentTheme.prefilledText || (isDarkTheme ? '#e8e8e8' : '#1a1a1a');
+            const p1Col          = currentTheme.playerText    || (isDarkTheme ? '#64b5f6' : '#003d80');
+            const p2Col          = currentTheme.playerText    ? '#e57373' : '#8b4513';
+            const numFontBig     = `bold ${Math.round(cellSize * 0.62)}px -apple-system,sans-serif`;
+            const numFontSmall   = `bold ${Math.round(cellSize * 0.52)}px -apple-system,sans-serif`;
+            const numFontTiny    = `bold ${Math.round(cellSize * 0.42)}px -apple-system,sans-serif`;
+            const pencilFont     = `${Math.round(cellSize * 0.25)}px -apple-system,sans-serif`;
+            const p1Claimed      = cbMode ? 'rgba(0,100,255,0.22)' :
+                                   (useCheckerboard ? 'rgba(74,158,255,0.45)' :
+                                   (isDarkTheme ? 'rgba(74,158,255,0.2)' : 'rgba(74,158,255,0.18)'));
+            const p2Claimed      = cbMode ? 'rgba(220,120,0,0.22)' :
+                                   (useCheckerboard ? 'rgba(255,140,74,0.45)' :
+                                   (isDarkTheme ? 'rgba(255,140,74,0.2)' : 'rgba(255,140,74,0.18)'));
+            const zoneTint       = useCheckerboard ? 'rgba(255,255,255,0.10)' :
+                                   (!isDarkTheme ? 'rgba(199,218,255,0.45)' : 'rgba(100,130,255,0.15)');
+            const gridLineColor  = currentTheme.lineColor ||
+                                   (currentTheme.dark === '#1a1a1a' ? '#444' :
+                                    currentTheme.dark === '#4682b4' ? '#2c5282' :
+                                    currentTheme.dark === '#ff8533' ? '#cc6600' : '#5d4037');
+            const boldLineColor  = currentTheme.boldLineColor ||
+                                   (currentTheme.dark === '#1a1a1a' ? '#666' :
+                                    currentTheme.dark === '#4682b4' ? '#1e3a5f' :
+                                    currentTheme.dark === '#ff8533' ? '#994d00' : '#3e2723');
+
             // Clear canvas with theme background
             ctx.fillStyle = currentTheme.bgFill || currentTheme.dark;
             ctx.fillRect(0, 0, size, size);
@@ -2069,22 +2122,17 @@
                         bgColor = currentTheme.light;
                     }
                     
-                    const cbMode = playerData.settings.colorBlind || false;
                     // Apply claim tint
                     if (claim === -1) {
                         bgColor = currentTheme.prefilled;
                     } else if (claim === 1) {
-                        bgColor = cbMode ? 'rgba(0,100,255,0.22)' :
-                            (useCheckerboard ? 'rgba(74,158,255,0.45)' :
-                            (currentTheme === CONFIG.THEMES.night ? 'rgba(74,158,255,0.2)' : 'rgba(74,158,255,0.18)'));
+                        bgColor = p1Claimed;
                     } else if (claim === 2) {
-                        bgColor = cbMode ? 'rgba(220,120,0,0.22)' :
-                            (useCheckerboard ? 'rgba(255,140,74,0.45)' :
-                            (currentTheme === CONFIG.THEMES.night ? 'rgba(255,140,74,0.2)' : 'rgba(255,140,74,0.18)'));
+                        bgColor = p2Claimed;
                     }
                     
                     // Animation
-                    const cellKey = `${row},${col}`;
+                    const cellKey = row * 20 + col; // numeric key — no string allocation
                     const anim = gameState.animatingCells.get(cellKey);
                     let scale = 1;
                     
@@ -2135,11 +2183,6 @@
 
                     // Row/col/box highlight zone (subtle tint)
                     if (isHighlightZone && !isSelected && claim === 0) {
-                        const zoneTint = useCheckerboard
-                            ? 'rgba(255,255,255,0.10)'
-                            : (currentTheme.checkerboard === false && currentTheme.light === '#ffffff'
-                                ? 'rgba(199,218,255,0.45)'   // clean: soft blue
-                                : 'rgba(100,130,255,0.15)'); // night: subtle
                         ctx.fillStyle = zoneTint;
                         ctx.fillRect(x, y, cellSize, cellSize);
                     }
@@ -2197,28 +2240,17 @@
                     
                     // Draw number or pencil marks
                     if (value !== 0) {
-                        // Smaller font for 16×16 mode or 2-digit values
-                        const fontSize = N > 9
-                            ? (value > 9 ? cellSize * 0.42 : cellSize * 0.52)
-                            : cellSize * 0.62;
-                        ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
+                        ctx.font = N > 9 ? (value > 9 ? numFontTiny : numFontSmall) : numFontBig;
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
                         
-                        // Given-cell text colour can be overridden by theme
-                        // Given-cell colour: from theme, else dark for light themes, light for dark
-                        const isDarkTheme = (currentTheme.dark === '#1a1a1a' ||
-                                            currentTheme.bgFill === '#161830');
-                        const givenCol  = currentTheme.prefilledText ||
-                                          (isDarkTheme ? '#e8e8e8' : '#1a1a1a');
-                        const p1Col     = currentTheme.playerText    ||
-                                          (isDarkTheme ? '#64b5f6' : '#003d80');
+                        // Colours hoisted above loop
                         if (claim === -1) {
                             ctx.fillStyle = givenCol;
                         } else if (claim === 1) {
                             ctx.fillStyle = isSelected ? '#ffffff' : p1Col;
                         } else if (claim === 2) {
-                            ctx.fillStyle = isSelected ? '#ffffff' : (currentTheme.playerText ? '#e57373' : '#8b4513');
+                            ctx.fillStyle = isSelected ? '#ffffff' : p2Col;
                         } else {
                             ctx.fillStyle = givenCol;
                         }
@@ -2255,35 +2287,29 @@
                 }
             }
             
-            // ── Grid Lines ──────────────────────────────────────────
-            // Thin cell dividers
-            const gridLineColor = currentTheme.lineColor
-                || (currentTheme.dark === '#1a1a1a' ? '#444'
-                    : currentTheme.dark === '#4682b4' ? '#2c5282'
-                    : currentTheme.dark === '#ff8533' ? '#cc6600'
-                    : '#5d4037');
+            // ── Grid Lines — batched into single paths per weight ───────────
+            // Thin cell dividers (one path for all)
             ctx.strokeStyle = gridLineColor;
             ctx.lineWidth = N > 9 ? 0.5 : 0.8;
+            ctx.beginPath();
             for (let i = 0; i <= N; i++) {
                 const pos = i * cellSize;
-                ctx.beginPath(); ctx.moveTo(pos, 0);    ctx.lineTo(pos, size); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(0,   pos);  ctx.lineTo(size, pos); ctx.stroke();
+                ctx.moveTo(pos, 0); ctx.lineTo(pos, size);
+                ctx.moveTo(0, pos); ctx.lineTo(size, pos);
             }
-            // Bold box dividers
-            const boldLineColor = currentTheme.boldLineColor
-                || (currentTheme.dark === '#1a1a1a' ? '#666'
-                    : currentTheme.dark === '#4682b4' ? '#1e3a5f'
-                    : currentTheme.dark === '#ff8533' ? '#994d00'
-                    : '#3e2723');
+            ctx.stroke();
+            // Bold box dividers (one path for all)
             ctx.strokeStyle = boldLineColor;
             ctx.lineWidth = N > 9 ? 1.5 : 2.5;
             const boxes = N / BS;
+            ctx.beginPath();
             for (let i = 0; i <= boxes; i++) {
                 const pos = i * BS * cellSize;
-                ctx.beginPath(); ctx.moveTo(pos, 0);    ctx.lineTo(pos, size); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(0,   pos);  ctx.lineTo(size, pos); ctx.stroke();
+                ctx.moveTo(pos, 0); ctx.lineTo(pos, size);
+                ctx.moveTo(0, pos); ctx.lineTo(size, pos);
             }
-            // Outer border (always sharp)
+            ctx.stroke();
+            // Outer border
             ctx.strokeStyle = currentTheme.outerBorderColor || boldLineColor;
             ctx.lineWidth = N > 9 ? 2.5 : 3.5;
             ctx.strokeRect(0.5, 0.5, size - 1, size - 1);
@@ -2501,8 +2527,8 @@
             // selected to trigger the "highlight matching numbers" visual, even though
             // input will be blocked in makeMove/handleNumberInput for those cells.
             gameState.selectedCell = { row, col };
-            // Highlight the number in this cell (if filled)
             gameState.highlightNumber = gameState.puzzle[row][col] || null;
+            markGridDirty();
             drawGrid();
             // No longer showing the popup picker - permanent pad is always visible
         }
@@ -2514,7 +2540,8 @@
         function hideNumberPicker() {
             // Deprecated - keeping for compatibility
             gameState.selectedCell = null;
-            drawGrid();
+            markGridDirty();
+            markGridDirty(); drawGrid();
         }
 
         // ============================================
@@ -2560,10 +2587,12 @@
                 }
 
                 updateWrongMovesDisplay();
+                markGridDirty();
                 drawGrid();
                 // Auto-clear error flash after 600ms
                 setTimeout(() => {
                     gameState.errorCell = null;
+                    markGridDirty();
                     drawGrid();
                 }, 600);
                 return;
@@ -2690,6 +2719,7 @@
                     }
                     nr += dr; nc += dc;
                 }
+                markGridDirty();
                 drawGrid();
                 return;
             }
@@ -2698,6 +2728,7 @@
             if (e.key === 'Escape') {
                 gameState.selectedCell = null;
                 gameState.highlightNumber = null;
+                markGridDirty();
                 drawGrid();
             }
 
@@ -2760,7 +2791,8 @@
             
             playSound('claim');
             updateScores();
-            drawGrid();
+            markGridDirty();
+            markGridDirty(); drawGrid();
         }
 
         function showOpponentMoveNotification() {
@@ -3277,6 +3309,8 @@
             gameState.lastMoveCell  = null;
             gameState.animatingCells.clear();
             gameState.lastTick      = Date.now();
+            _gridDirty = true;
+            _lastTimerStr = { p1: '', p2: '' };
             gameState.wrongMoves    = 0;
             gameState.hintsUsed     = 0;
             gameState.errorCell     = null;
@@ -3291,6 +3325,7 @@
             lobby.style.display = 'none';
             gameScreen.classList.add('active');
             resizeCanvas();
+            markGridDirty();
             drawGrid();
             updateRemainingCounts();
             requestAnimationFrame(gameLoop);
@@ -4881,6 +4916,7 @@
             lobby.style.display = 'none';
             gameScreen.classList.add('active');
             resizeCanvas();
+            markGridDirty();
             drawGrid();
             updateRemainingCounts();
             requestAnimationFrame(gameLoop);
