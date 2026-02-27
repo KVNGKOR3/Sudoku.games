@@ -196,7 +196,7 @@
                 totalTimePlayed: 0
             },
             history: [],
-            soloStats: { easy:{}, medium:{}, hard:{}, extreme:{} }
+            soloStats: { easy:{}, medium:{}, hard:{}, extreme:{}, daily:{} }
         };
 
         function loadPlayerData() {
@@ -211,7 +211,7 @@
                         ...parsed,
                         settings:   { ...playerData.settings,   ...(parsed.settings   || {}) },
                         profile:    { ...playerData.profile,     ...(parsed.profile    || {}) },
-                        soloStats:  { ...playerData.soloStats,   ...(parsed.soloStats  || {}) },
+                        soloStats:  { easy:{}, medium:{}, hard:{}, extreme:{}, daily:{}, ...playerData.soloStats, ...(parsed.soloStats  || {}) },
                     };
                     playerRating = playerData.profile.rating;
                 } catch (e) {
@@ -304,6 +304,11 @@
             // Puzzle XP
             renderPuzzleXP(currentProfile);
 
+            // Solo stats section (only if profile is visible)
+            if (document.getElementById('profile-page')?.classList.contains('active')) {
+                renderSoloProfileStats();
+            }
+
             // Badges
             updateBadges();
 
@@ -391,6 +396,136 @@
                 }
             }
         }
+        // ============================================
+        // SOLO PROFILE STATS SECTION (injected into profile page)
+        // ============================================
+        function renderSoloProfileStats() {
+            const container = document.getElementById('profile-page');
+            if (!container) return;
+
+            // Remove existing solo stats section if present
+            const existing = document.getElementById('solo-profile-stats-section');
+            if (existing) existing.remove();
+
+            const DIFFS = ['easy','medium','hard','extreme'];
+            const DIFF_LABELS = { easy:'Easy', medium:'Medium', hard:'Hard', extreme:'Extreme' };
+            const DIFF_COLORS = { easy:'#4caf50', medium:'#4a9eff', hard:'#f5a623', extreme:'#f05a5a' };
+
+            function fmtTime(s) {
+                if (!s) return '—';
+                const m = Math.floor(s/60), sec = s%60;
+                return m > 0 ? `${m}m ${sec.toString().padStart(2,'0')}s` : `${sec}s`;
+            }
+
+            // Daily challenge status
+            const dcDone = hasDoneChallengeTodayLocal();
+            const dcResult = getTodaysChallengeResult();
+            const dcStats = playerData.soloStats['daily'] || {};
+            const streakData = getDailyStreak();
+
+            const section = document.createElement('div');
+            section.id = 'solo-profile-stats-section';
+            section.style.cssText = 'margin-top:0;padding:0 16px 24px;';
+
+            // ── Difficulty tabs ──────────────────────────────────────
+            let activeDiff = 'easy';
+
+            function buildTabContent(diff) {
+                const st = playerData.soloStats[diff] || {};
+                const bt = fmtTime(st.bestTime);
+                const bs = st.bestScore ? st.bestScore.toLocaleString() : '—';
+                const gp = st.gamesPlayed || 0;
+
+                const statCard = (icon, label, value, color) => `
+                    <div style="background:#1a1e2e;border-radius:14px;padding:18px 16px;
+                                display:flex;align-items:center;justify-content:space-between;">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <span style="font-size:1.5rem;">${icon}</span>
+                            <span style="font-size:0.9rem;color:#aaa;">${label}</span>
+                        </div>
+                        <span style="font-size:1.3rem;font-weight:800;color:${color||'#fff'};">${value}</span>
+                    </div>`;
+
+                return `
+                    <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px;">
+                        ${statCard('🎮','Games Solved', gp || '—', '#fff')}
+                        ${statCard('⏱️','Best Time', bt, '#4a9eff')}
+                        ${statCard('🏆','Best Score', bs, '#d59020')}
+                    </div>`;
+            }
+
+            section.innerHTML = `
+                <!-- Section header -->
+                <div style="font-size:1rem;font-weight:700;color:#fff;margin-bottom:14px;padding-top:4px;">
+                    📊 Solo Stats
+                </div>
+
+                <!-- Daily Challenge card -->
+                <div style="background:linear-gradient(135deg,#1a1e2e,#1f2640);border:1px solid rgba(213,144,32,0.3);
+                            border-radius:16px;padding:16px;margin-bottom:16px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                        <div style="font-size:0.95rem;font-weight:700;color:#d59020;">📅 Daily Challenge</div>
+                        <div style="font-size:0.8rem;color:${streakData.streak>0?'#f5a623':'#555'};">
+                            🔥 ${streakData.streak} day streak
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:10px;margin-bottom:12px;">
+                        <div style="flex:1;background:#0f1220;border-radius:10px;padding:12px;text-align:center;">
+                            <div style="font-size:1.2rem;font-weight:800;color:#d59020;">${dcStats.gamesPlayed||0}</div>
+                            <div style="font-size:0.7rem;color:#666;margin-top:2px;">Completions</div>
+                        </div>
+                        <div style="flex:1;background:#0f1220;border-radius:10px;padding:12px;text-align:center;">
+                            <div style="font-size:1.1rem;font-weight:800;color:#4a9eff;">${fmtTime(dcStats.bestTime)}</div>
+                            <div style="font-size:0.7rem;color:#666;margin-top:2px;">Best Time</div>
+                        </div>
+                        <div style="flex:1;background:#0f1220;border-radius:10px;padding:12px;text-align:center;">
+                            <div style="font-size:1rem;font-weight:800;color:#d59020;">${dcStats.bestScore?dcStats.bestScore.toLocaleString():'—'}</div>
+                            <div style="font-size:0.7rem;color:#666;margin-top:2px;">Best Score</div>
+                        </div>
+                    </div>
+                    ${dcDone && dcResult ? `
+                    <div style="background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.25);border-radius:8px;
+                                padding:8px 12px;font-size:0.78rem;color:#4caf50;text-align:center;">
+                        ✅ Today: ${dcResult.score.toLocaleString()} pts · ${fmtTime(dcResult.elapsed)}
+                    </div>` : `
+                    <button onclick="launchDailyChallenge();document.querySelector('[data-page=lobby]')?.click();"
+                        style="width:100%;padding:10px;background:linear-gradient(135deg,#d59020,#c07010);
+                               border:none;border-radius:10px;color:#fff;font-weight:700;font-size:0.9rem;cursor:pointer;">
+                        🎯 Play Today's Challenge
+                    </button>`}
+                </div>
+
+                <!-- Difficulty tabs -->
+                <div style="display:flex;gap:6px;margin-bottom:2px;" id="solo-diff-tabs">
+                    ${DIFFS.map(d => `
+                        <button data-diff="${d}"
+                            style="flex:1;padding:7px 2px;border-radius:8px;border:none;cursor:pointer;font-size:0.78rem;
+                                   font-weight:600;transition:all 0.15s;
+                                   background:${d==='easy'?DIFF_COLORS[d]:'#1a1e2e'};
+                                   color:${d==='easy'?'#fff':'#777'};"
+                            onclick="switchSoloDiffTab('${d}')">
+                            ${DIFF_LABELS[d]}
+                        </button>`).join('')}
+                </div>
+                <div id="solo-diff-content">
+                    ${buildTabContent('easy')}
+                </div>`;
+
+            // Expose tab switch globally
+            window.switchSoloDiffTab = function(diff) {
+                activeDiff = diff;
+                // Update tab styles
+                section.querySelectorAll('[data-diff]').forEach(btn => {
+                    const isActive = btn.dataset.diff === diff;
+                    btn.style.background = isActive ? DIFF_COLORS[diff] : '#1a1e2e';
+                    btn.style.color = isActive ? '#fff' : '#777';
+                });
+                document.getElementById('solo-diff-content').innerHTML = buildTabContent(diff);
+            };
+
+            container.appendChild(section);
+        }
+
 
         function recordGame(result, opponentName) {
             const ratingBefore = currentProfile?.rating ?? playerData.profile.rating;
@@ -1128,6 +1263,7 @@
                         document.getElementById('profile-page').classList.add('active');
                         updateAllDisplays();
                         if (currentProfile) updateUIWithProfile();
+                        renderSoloProfileStats();
                     } else if (page === 'leaderboard') {
                         document.getElementById('leaderboard-page').classList.add('active');
                         if (supabaseClient) loadLeaderboard();
@@ -1562,6 +1698,51 @@
             document.getElementById('solo-sudoku-btn').addEventListener('click', () => {
                 document.getElementById('difficulty-modal').classList.add('active');
             });
+
+            // Inject Daily Challenge button into lobby if not already there
+            (function injectDailyChallengeBtn() {
+                if (document.getElementById('daily-challenge-lobby-btn')) return;
+                const soloBtn = document.getElementById('solo-sudoku-btn');
+                if (!soloBtn) return;
+
+                const today = new Date().toISOString().slice(0,10);
+                const dcKey = 'sudoku_daily_challenge_' + today;
+                const done = !!localStorage.getItem(dcKey);
+                const dcResult = done ? JSON.parse(localStorage.getItem(dcKey)||'{}') : null;
+
+                const btn = document.createElement('button');
+                btn.id = 'daily-challenge-lobby-btn';
+                btn.className = soloBtn.className; // match styling
+                btn.style.cssText = `
+                    width:100%;margin-top:10px;padding:14px 20px;
+                    background:linear-gradient(135deg,#1f2030,#1a1c2c);
+                    border:1px solid rgba(213,144,32,0.4);
+                    border-radius:14px;color:#d59020;font-weight:700;
+                    font-size:0.95rem;cursor:pointer;text-align:left;
+                    display:flex;align-items:center;gap:12px;
+                `;
+                btn.innerHTML = done
+                    ? \`<span style="font-size:1.4rem;">✅</span>
+                       <div>
+                         <div>Daily Challenge — Done!</div>
+                         <div style="font-size:0.75rem;color:#666;margin-top:2px;">\${dcResult?.score?.toLocaleString?.() || ''} pts · Come back tomorrow</div>
+                       </div>\`
+                    : \`<span style="font-size:1.4rem;">📅</span>
+                       <div>
+                         <div>Daily Challenge</div>
+                         <div style="font-size:0.75rem;color:#777;margin-top:2px;">New puzzle every day · Hard difficulty</div>
+                       </div>
+                       <div style="margin-left:auto;background:#d59020;color:#161512;
+                                   font-size:0.65rem;font-weight:800;padding:3px 7px;
+                                   border-radius:4px;">NEW</div>\`;
+
+                btn.addEventListener('click', () => {
+                    if (!done) launchDailyChallenge();
+                    else showToast('✅ Already completed today! Come back tomorrow.', 2500);
+                });
+
+                soloBtn.parentNode.insertBefore(btn, soloBtn.nextSibling);
+            })();
 
             // Difficulty selection (for puzzles)
             document.querySelectorAll('.difficulty-btn').forEach(btn => {
@@ -3064,9 +3245,10 @@
                 const mins = Math.floor(elapsed / 60), secs = elapsed % 60;
                 const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 
-                icon.textContent  = solved ? '🎉' : '🤔';
-                title.textContent = solved ? 'Puzzle Complete!' : 'Keep Going!';
-                subtitle.textContent = solved ? `Solved in ${timeStr}` : `Time elapsed: ${timeStr}`;
+                const isDaily = gameState.isDailyChallenge;
+                icon.textContent  = solved ? (isDaily ? '📅' : '🎉') : '🤔';
+                title.textContent = solved ? (isDaily ? 'Daily Challenge Complete!' : 'Puzzle Complete!') : 'Keep Going!';
+                subtitle.textContent = solved ? \`Solved in \${timeStr}\` : \`Time elapsed: \${timeStr}\`;
 
                 // Best time tracking
                 const diff = gameState.difficulty || 'medium';
@@ -3075,9 +3257,13 @@
                     const prev = (playerData.soloStats[diff] || {});
                     const prevBest = prev.bestTime;
                     const isNewBest = !prevBest || elapsed < prevBest;
+                    const finalScore = gameState.scores.p1;
+                    const prevBestScore = prev.bestScore || 0;
+                    const isNewBestScore = finalScore > prevBestScore;
                     playerData.soloStats[diff] = {
                         ...(playerData.soloStats[diff] || {}),
                         bestTime: isNewBest ? elapsed : prevBest,
+                        bestScore: isNewBestScore ? finalScore : prevBestScore,
                         gamesPlayed: (prev.gamesPlayed || 0) + 1,
                     };
                     savePlayerData();
@@ -3121,6 +3307,17 @@
 
                 ratingWrap.style.display = 'none';
 
+                if (gameState.isDailyChallenge && solved) {
+                    markChallengeDoneToday(finalScore, elapsed);
+                    recordDailyGame(); // also counts for streak
+                    gameState.isDailyChallenge = false;
+                    // Update daily challenge label in lobby if visible
+                    const dcBtn = document.getElementById('daily-challenge-lobby-btn');
+                    if (dcBtn) {
+                        dcBtn.innerHTML = dcBtn.innerHTML.replace('Play Today's Challenge', '✅ Done for today!');
+                        dcBtn.style.opacity = '0.6';
+                    }
+                }
                 if (gameState.dojoTechniqueId && solved) {
                     completeDojoPuzzle();
                 }
@@ -4570,6 +4767,7 @@
 
             document.getElementById('dojo-banner')?.remove();
             gameState.dojoTechniqueId = null;
+            gameState.isDailyChallenge = false;
 
             const solveMs = Date.now() - (gameState.dojoStartTime || Date.now());
             const solveSecs = Math.round(solveMs / 1000);
@@ -6096,6 +6294,66 @@
             }
         }
 
+        // ============================================
+        // SEEDED RNG (for daily challenge)
+        // ============================================
+        function mulberry32(seed) {
+            return function() {
+                seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+                let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+                t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+                return ((t ^ t >>> 14) >>> 0) / 4294967296;
+            };
+        }
+
+        function getDailyChallengeSeed() {
+            const d = new Date();
+            // Seed from year+month+day so it changes daily but is same for everyone
+            return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+        }
+
+        function hasDoneChallengeTodayLocal() {
+            const key = 'sudoku_daily_challenge_' + new Date().toISOString().slice(0,10);
+            return !!localStorage.getItem(key);
+        }
+
+        function markChallengeDoneToday(score, elapsed) {
+            const key = 'sudoku_daily_challenge_' + new Date().toISOString().slice(0,10);
+            localStorage.setItem(key, JSON.stringify({ score, elapsed, ts: Date.now() }));
+            // Also save best daily score in soloStats
+            const prev = playerData.soloStats['daily'] || {};
+            const isNewBest = !prev.bestScore || score > prev.bestScore;
+            playerData.soloStats['daily'] = {
+                ...prev,
+                bestScore: isNewBest ? score : prev.bestScore,
+                bestTime: (!prev.bestTime || elapsed < prev.bestTime) ? elapsed : prev.bestTime,
+                gamesPlayed: (prev.gamesPlayed || 0) + 1,
+            };
+            savePlayerData();
+        }
+
+        function getTodaysChallengeResult() {
+            const key = 'sudoku_daily_challenge_' + new Date().toISOString().slice(0,10);
+            const raw = localStorage.getItem(key);
+            return raw ? JSON.parse(raw) : null;
+        }
+
+        window.launchDailyChallenge = function() {
+            const done = hasDoneChallengeTodayLocal();
+            if (done) {
+                const r = getTodaysChallengeResult();
+                const m = Math.floor(r.elapsed/60), s = r.elapsed%60;
+                showToast(`✅ Already done today! Score: ${r.score.toLocaleString()} · ${m}m ${s}s`, 3500);
+                return;
+            }
+            gameState.gameMode      = 'solo';
+            gameState.difficulty    = 'hard';
+            gameState.vsAI          = false;
+            gameState.timeLimit     = 9999;
+            gameState.isDailyChallenge = true;
+            startGame();
+        };
+
         function init() {
             loadPlayerData();
             setupEventListeners();
@@ -6127,6 +6385,15 @@
 
             // Daily streak + notifications
             initStreakNotifications();
+
+            // Fix streak bug: if app is left open overnight, re-check on tab focus
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    checkStreakIntegrity();
+                    updateStreakUI();
+                }
+            });
+
 
             // Variant badge on game screen
             function updateVariantBadge() {
